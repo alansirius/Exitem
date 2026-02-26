@@ -50,7 +50,12 @@ export function getReviewSettings(): ReviewSettings {
     ),
     secretKey: String(getPref("secretKey") || getPref("apiKey") || "").trim(),
     model: String(getPref("model") || DEFAULTS.model).trim(),
-    temperature: normalizeFloat(getPref("temperature"), DEFAULTS.temperature, 0, 2),
+    temperature: normalizeFloat(
+      getPref("temperature"),
+      DEFAULTS.temperature,
+      0,
+      2,
+    ),
     embeddingModel: String(
       getPref("embeddingModel") || DEFAULTS.embeddingModel,
     ).trim(),
@@ -127,7 +132,10 @@ export function saveReviewSettings(input: Partial<ReviewSettings>) {
     Boolean(next.importPDFAnnotationsAsField),
   );
   setPref("enablePDFInputTruncation", Boolean(next.enablePDFInputTruncation));
-  setPref("pdfTextMaxChars", Math.max(1, normalizeInt(next.pdfTextMaxChars, 20_000)));
+  setPref(
+    "pdfTextMaxChars",
+    Math.max(1, normalizeInt(next.pdfTextMaxChars, 20_000)),
+  );
   setPref(
     "pdfAnnotationTextMaxChars",
     Math.max(1, normalizeInt(next.pdfAnnotationTextMaxChars, 12_000)),
@@ -149,10 +157,18 @@ export function getZoteroGPTPrefsSnapshot(): ZoteroGPTPrefsSnapshot | null {
     const api = normalizeAPIBase(String(prefs.get(`${base}.api`) || "").trim());
     const secretKey = String(prefs.get(`${base}.secretKey`) || "").trim();
     const model = String(prefs.get(`${base}.model`) || "").trim();
-    const temperature = normalizeFloat(prefs.get(`${base}.temperature`), 1.0, 0, 2);
+    const temperature = normalizeFloat(
+      prefs.get(`${base}.temperature`),
+      1.0,
+      0,
+      2,
+    );
     const embeddingBatchNum = Math.max(
       1,
-      normalizeInt(prefs.get(`${base}.embeddingBatchNum`), DEFAULTS.embeddingBatchNum),
+      normalizeInt(
+        prefs.get(`${base}.embeddingBatchNum`),
+        DEFAULTS.embeddingBatchNum,
+      ),
     );
 
     // zotero-gpt currently hard-codes this model in Meet/OpenAI.ts
@@ -235,7 +251,9 @@ export function detectAwesomeGPT(): AwesomeGPTDetection {
         addonName: "Awesome GPT",
         callable: true,
         detail:
-          typeof value === "object" ? Object.keys(value).join(", ") : typeof value,
+          typeof value === "object"
+            ? Object.keys(value).join(", ")
+            : typeof value,
       };
     }
   }
@@ -260,7 +278,8 @@ export function detectAwesomeGPT(): AwesomeGPTDetection {
     installed: false,
     source: "not-found",
     callable: false,
-    obstacle: "未发现运行时接口；如果 GPT 插件未暴露全局 API，本插件无法直接调用",
+    obstacle:
+      "未发现运行时接口；如果 GPT 插件未暴露全局 API，本插件无法直接调用",
   };
 }
 
@@ -388,7 +407,9 @@ async function getAllExtensions(addonManager: any): Promise<any[]> {
   }
   if (typeof addonManager.getAllAddons === "function") {
     const addons = (await addonManager.getAllAddons()) || [];
-    return addons.filter((addon: any) => String(addon?.type || "") === "extension");
+    return addons.filter(
+      (addon: any) => String(addon?.type || "") === "extension",
+    );
   }
   return [];
 }

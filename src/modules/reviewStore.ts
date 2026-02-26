@@ -109,7 +109,8 @@ export async function getTodayAIExtractionCount(): Promise<number> {
     const today = new Date().toISOString().slice(0, 10);
     return store.events.filter(
       (e) =>
-        (e.eventName === "ai_extraction_success" || e.eventName === "ai_extraction_fail") &&
+        (e.eventName === "ai_extraction_success" ||
+          e.eventName === "ai_extraction_fail") &&
         String(e.createdAt || "").slice(0, 10) === today,
     ).length;
   });
@@ -123,7 +124,9 @@ export async function listReviewFolders(): Promise<ReviewFolderRow[]> {
   });
 }
 
-export async function createReviewFolder(name: string): Promise<ReviewFolderRow> {
+export async function createReviewFolder(
+  name: string,
+): Promise<ReviewFolderRow> {
   return withStoreOp(async () => {
     const store = await loadStoreData();
     ensureStoreIntegrity(store);
@@ -158,7 +161,9 @@ export async function deleteReviewFolder(folderID: number) {
       throw new Error(`系统文件夹不可删除：${folder.name}`);
     }
     const affectedRecordIDs = getRecordIDsByFolderIDsInternal(store, [id]);
-    store.recordFolderLinks = store.recordFolderLinks.filter((link) => link.folderID !== id);
+    store.recordFolderLinks = store.recordFolderLinks.filter(
+      (link) => link.folderID !== id,
+    );
     store.folders = store.folders.filter((f) => f.id !== id);
     normalizeRecordFolderMemberships(store, affectedRecordIDs);
     touchRecords(store, affectedRecordIDs);
@@ -181,7 +186,9 @@ export async function mergeReviewFolders(
     const folders = validIDs
       .map((id) => findFolderByID(store, id))
       .filter((f): f is JSONStoreFolder => Boolean(f));
-    const protectedFolders = folders.filter((f) => PROTECTED_FOLDER_NAMES.has(f.name));
+    const protectedFolders = folders.filter((f) =>
+      PROTECTED_FOLDER_NAMES.has(f.name),
+    );
     if (protectedFolders.length) {
       throw new Error(
         `系统文件夹不可合并：${protectedFolders.map((f) => f.name).join("、")}`,
@@ -217,7 +224,9 @@ export async function mergeReviewFolders(
         (link) => !sourceIDSet.has(link.folderID),
       );
       store.folders = store.folders.filter(
-        (folder) => !sourceIDSet.has(folder.id) || PROTECTED_FOLDER_NAMES.has(folder.name),
+        (folder) =>
+          !sourceIDSet.has(folder.id) ||
+          PROTECTED_FOLDER_NAMES.has(folder.name),
       );
     }
 
@@ -260,13 +269,17 @@ export async function upsertReviewRecord(
       record.journal = String(draft.journal || "");
       record.publicationDate = String(draft.publicationDate || "");
       record.abstractText = String(draft.abstractText || "");
-      record.pdfAnnotationNotesText = String(draft.pdfAnnotationNotesText || "");
+      record.pdfAnnotationNotesText = String(
+        draft.pdfAnnotationNotesText || "",
+      );
       record.researchBackground = String(draft.researchBackground || "");
       record.literatureReview = String(draft.literatureReview || "");
       record.researchMethods = String(draft.researchMethods || "");
       record.researchConclusions = String(draft.researchConclusions || "");
       record.keyFindings = normalizeStringArray(draft.keyFindings);
-      record.classificationTags = normalizeStringArray(draft.classificationTags);
+      record.classificationTags = normalizeStringArray(
+        draft.classificationTags,
+      );
       record.aiProvider = String(draft.aiProvider || "");
       record.aiModel = String(draft.aiModel || "");
       record.rawAIResponse = String(draft.rawAIResponse || "");
@@ -472,7 +485,9 @@ export async function exportReviewRecordsAsCSV(
       row.updatedAt,
     ]);
   }
-  return "\uFEFF" + csvRows.map((cols) => cols.map(csvEscape).join(",")).join("\n");
+  return (
+    "\uFEFF" + csvRows.map((cols) => cols.map(csvEscape).join(",")).join("\n")
+  );
 }
 
 async function withStoreOp<T>(fn: () => Promise<T>): Promise<T> {
@@ -550,15 +565,18 @@ function normalizeStoreData(raw: any): JSONStoreData {
   const nextIDs = {
     folder: Math.max(
       1,
-      Number(raw?.nextIDs?.folder) || maxID(folders.map((f: JSONStoreFolder) => f.id)) + 1,
+      Number(raw?.nextIDs?.folder) ||
+        maxID(folders.map((f: JSONStoreFolder) => f.id)) + 1,
     ),
     record: Math.max(
       1,
-      Number(raw?.nextIDs?.record) || maxID(records.map((r: JSONStoreRecord) => r.id)) + 1,
+      Number(raw?.nextIDs?.record) ||
+        maxID(records.map((r: JSONStoreRecord) => r.id)) + 1,
     ),
     event: Math.max(
       1,
-      Number(raw?.nextIDs?.event) || maxID(events.map((e: JSONStoreEvent) => e.id)) + 1,
+      Number(raw?.nextIDs?.event) ||
+        maxID(events.map((e: JSONStoreEvent) => e.id)) + 1,
     ),
   };
   return {
@@ -595,7 +613,8 @@ function ensureStoreIntegrity(store: JSONStoreData) {
   const seenLinkKeys = new Set<string>();
   const beforeLinksLen = store.recordFolderLinks.length;
   store.recordFolderLinks = store.recordFolderLinks.filter((link) => {
-    if (!folderIDs.has(link.folderID) || !recordIDs.has(link.recordID)) return false;
+    if (!folderIDs.has(link.folderID) || !recordIDs.has(link.recordID))
+      return false;
     const key = `${link.recordID}:${link.folderID}`;
     if (seenLinkKeys.has(key)) return false;
     seenLinkKeys.add(key);
@@ -606,7 +625,9 @@ function ensureStoreIntegrity(store: JSONStoreData) {
   const beforeFolderLen = store.folders.length;
   const folderSeen = new Set<string>();
   store.folders = store.folders.filter((folder) => {
-    const key = String(folder.name || "").trim().toLowerCase();
+    const key = String(folder.name || "")
+      .trim()
+      .toLowerCase();
     if (!key) return false;
     if (folderSeen.has(key)) return false;
     folderSeen.add(key);
@@ -616,9 +637,18 @@ function ensureStoreIntegrity(store: JSONStoreData) {
 
   if (normalizeRecordFolderMemberships(store)) changed = true;
 
-  store.nextIDs.folder = Math.max(store.nextIDs.folder || 1, maxID(store.folders.map((f) => f.id)) + 1);
-  store.nextIDs.record = Math.max(store.nextIDs.record || 1, maxID(store.records.map((r) => r.id)) + 1);
-  store.nextIDs.event = Math.max(store.nextIDs.event || 1, maxID(store.events.map((e) => e.id)) + 1);
+  store.nextIDs.folder = Math.max(
+    store.nextIDs.folder || 1,
+    maxID(store.folders.map((f) => f.id)) + 1,
+  );
+  store.nextIDs.record = Math.max(
+    store.nextIDs.record || 1,
+    maxID(store.records.map((r) => r.id)) + 1,
+  );
+  store.nextIDs.event = Math.max(
+    store.nextIDs.event || 1,
+    maxID(store.events.map((e) => e.id)) + 1,
+  );
   return changed;
 }
 
@@ -636,7 +666,10 @@ function ensureDefaultFolder(store: JSONStoreData): JSONStoreFolder {
   return folder;
 }
 
-function resolveTargetFolderID(store: JSONStoreData, folderID: number | null | undefined) {
+function resolveTargetFolderID(
+  store: JSONStoreData,
+  folderID: number | null | undefined,
+) {
   if (typeof folderID === "number" && Number.isFinite(folderID)) {
     const folder = findFolderByID(store, folderID);
     if (!folder) {
@@ -647,7 +680,10 @@ function resolveTargetFolderID(store: JSONStoreData, folderID: number | null | u
   return ensureDefaultFolder(store).id;
 }
 
-function normalizeRecordFolderMemberships(store: JSONStoreData, recordIDs?: number[]) {
+function normalizeRecordFolderMemberships(
+  store: JSONStoreData,
+  recordIDs?: number[],
+) {
   let changed = false;
   const ids = recordIDs?.length
     ? normalizeIDList(recordIDs)
@@ -656,18 +692,23 @@ function normalizeRecordFolderMemberships(store: JSONStoreData, recordIDs?: numb
   const defaultFolder = ensureDefaultFolder(store);
 
   for (const recordID of ids) {
-    const links = store.recordFolderLinks.filter((link) => link.recordID === recordID);
+    const links = store.recordFolderLinks.filter(
+      (link) => link.recordID === recordID,
+    );
     if (!links.length) {
       addRecordFolderLink(store, recordID, defaultFolder.id);
       changed = true;
       continue;
     }
     const hasDefault = links.some((link) => link.folderID === defaultFolder.id);
-    const hasNonDefault = links.some((link) => link.folderID !== defaultFolder.id);
+    const hasNonDefault = links.some(
+      (link) => link.folderID !== defaultFolder.id,
+    );
     if (hasDefault && hasNonDefault) {
       const before = store.recordFolderLinks.length;
       store.recordFolderLinks = store.recordFolderLinks.filter(
-        (link) => !(link.recordID === recordID && link.folderID === defaultFolder.id),
+        (link) =>
+          !(link.recordID === recordID && link.folderID === defaultFolder.id),
       );
       if (store.recordFolderLinks.length !== before) changed = true;
     }
@@ -692,7 +733,11 @@ function addRecordFolderLink(
   });
 }
 
-function touchRecords(store: JSONStoreData, recordIDs: number[], timestamp = nowISO()) {
+function touchRecords(
+  store: JSONStoreData,
+  recordIDs: number[],
+  timestamp = nowISO(),
+) {
   const idSet = new Set(normalizeIDList(recordIDs));
   if (!idSet.size) return;
   for (const record of store.records) {
@@ -729,7 +774,9 @@ function applyRecordFilters(
     rows = rows.filter((row) => allowed.has(row.id));
   }
 
-  const q = String(filters.search || "").trim().toLowerCase();
+  const q = String(filters.search || "")
+    .trim()
+    .toLowerCase();
   if (q) {
     const folderNamesByRecord = buildFolderNamesByRecordMap(store);
     rows = rows.filter((row) => {
@@ -757,7 +804,10 @@ function applyRecordFilters(
   return rows;
 }
 
-function sortRecords(records: JSONStoreRecord[], filters: ReviewListFilters = {}) {
+function sortRecords(
+  records: JSONStoreRecord[],
+  filters: ReviewListFilters = {},
+) {
   const sortKey = filters.sortKey || "updatedAt";
   const sortDir = filters.sortDir === "asc" ? "asc" : "desc";
   return [...records].sort((a, b) => {
@@ -776,7 +826,10 @@ function sortRecords(records: JSONStoreRecord[], filters: ReviewListFilters = {}
   });
 }
 
-function paginateRecords(records: JSONStoreRecord[], filters: ReviewListFilters = {}) {
+function paginateRecords(
+  records: JSONStoreRecord[],
+  filters: ReviewListFilters = {},
+) {
   const limit = normalizePositiveInteger(filters.limit);
   const offset = normalizeNonNegativeInteger(filters.offset) || 0;
   if (limit == null) {
@@ -785,7 +838,10 @@ function paginateRecords(records: JSONStoreRecord[], filters: ReviewListFilters 
   return records.slice(offset, offset + limit);
 }
 
-function getRecordIDsByFolderIDsInternal(store: JSONStoreData, folderIDs: number[]) {
+function getRecordIDsByFolderIDsInternal(
+  store: JSONStoreData,
+  folderIDs: number[],
+) {
   const idSet = new Set(normalizeIDList(folderIDs));
   return Array.from(
     new Set(
@@ -849,7 +905,9 @@ function mapRecordWithFolders(
 }
 
 function buildFolderNamesByRecordMap(store: JSONStoreData) {
-  const folderByID = new Map(store.folders.map((folder) => [folder.id, folder.name]));
+  const folderByID = new Map(
+    store.folders.map((folder) => [folder.id, folder.name]),
+  );
   const result = new Map<number, string[]>();
   for (const link of store.recordFolderLinks) {
     const folderName = folderByID.get(link.folderID);
@@ -878,7 +936,9 @@ function sortFolders(folders: JSONStoreFolder[]) {
 }
 
 function sortFolderNames(names: string[]) {
-  return [...new Set(names.map((n) => String(n || "").trim()).filter(Boolean))].sort((a, b) => {
+  return [
+    ...new Set(names.map((n) => String(n || "").trim()).filter(Boolean)),
+  ].sort((a, b) => {
     const aDefault = a === DEFAULT_FOLDER_NAME ? 0 : 1;
     const bDefault = b === DEFAULT_FOLDER_NAME ? 0 : 1;
     if (aDefault !== bDefault) return aDefault - bDefault;
@@ -891,8 +951,14 @@ function findFolderByID(store: JSONStoreData, id: number) {
 }
 
 function findFolderByName(store: JSONStoreData, name: string) {
-  const target = String(name || "").trim().toLowerCase();
-  return store.folders.find((folder) => folder.name.trim().toLowerCase() === target) || null;
+  const target = String(name || "")
+    .trim()
+    .toLowerCase();
+  return (
+    store.folders.find(
+      (folder) => folder.name.trim().toLowerCase() === target,
+    ) || null
+  );
 }
 
 function normalizeFolderRecord(value: any): JSONStoreFolder | null {
@@ -910,7 +976,12 @@ function normalizeFolderRecord(value: any): JSONStoreFolder | null {
 function normalizeReviewRecord(value: any): JSONStoreRecord | null {
   const id = Number(value?.id);
   const zoteroItemID = Number(value?.zoteroItemID);
-  if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(zoteroItemID) || zoteroItemID <= 0) {
+  if (
+    !Number.isFinite(id) ||
+    id <= 0 ||
+    !Number.isFinite(zoteroItemID) ||
+    zoteroItemID <= 0
+  ) {
     return null;
   }
   const timestamp = nowISO();
@@ -937,7 +1008,9 @@ function normalizeReviewRecord(value: any): JSONStoreRecord | null {
   };
 }
 
-function normalizeRecordFolderLink(value: any): JSONStoreRecordFolderLink | null {
+function normalizeRecordFolderLink(
+  value: any,
+): JSONStoreRecordFolderLink | null {
   const recordID = Number(value?.recordID);
   const folderID = Number(value?.folderID);
   if (!Number.isFinite(recordID) || recordID <= 0) return null;
@@ -955,18 +1028,26 @@ function normalizeStoreEvent(value: any): JSONStoreEvent | null {
   return {
     id,
     eventName: String(value?.eventName || "unknown_event"),
-    payloadJSON: typeof value?.payloadJSON === "string" ? value.payloadJSON : safeJSONStringify(value?.payloadJSON || {}),
+    payloadJSON:
+      typeof value?.payloadJSON === "string"
+        ? value.payloadJSON
+        : safeJSONStringify(value?.payloadJSON || {}),
     createdAt: String(value?.createdAt || nowISO()),
   };
 }
 
 function normalizeStringArray(value: unknown) {
   if (!Array.isArray(value)) return [] as string[];
-  return value.map((v) => String(v).trim()).filter(Boolean).slice(0, 200);
+  return value
+    .map((v) => String(v).trim())
+    .filter(Boolean)
+    .slice(0, 200);
 }
 
 function normalizeFolderName(name: unknown) {
-  return String(name || "").trim().slice(0, 100);
+  return String(name || "")
+    .trim()
+    .slice(0, 100);
 }
 
 function normalizeIDList(ids: unknown[]) {

@@ -27,7 +27,10 @@ function initPrefsUI(win: Window) {
   const secretKeyInput = getEl<HTMLInputElement>(doc, id("secret-key"));
   const modelInput = getEl<HTMLInputElement>(doc, id("model"));
   const temperatureInput = getEl<HTMLInputElement>(doc, id("temperature"));
-  const embeddingModelInput = getEl<HTMLInputElement>(doc, id("embedding-model"));
+  const embeddingModelInput = getEl<HTMLInputElement>(
+    doc,
+    id("embedding-model"),
+  );
   const embeddingBatchNumInput = getEl<HTMLInputElement>(
     doc,
     id("embedding-batch-num"),
@@ -50,14 +53,26 @@ function initPrefsUI(win: Window) {
     doc,
     id("enable-pdf-input-truncation"),
   );
-  const pdfTextMaxCharsInput = getEl<HTMLInputElement>(doc, id("pdf-text-max-chars"));
+  const pdfTextMaxCharsInput = getEl<HTMLInputElement>(
+    doc,
+    id("pdf-text-max-chars"),
+  );
   const pdfAnnotationTextMaxCharsInput = getEl<HTMLInputElement>(
     doc,
     id("pdf-annotation-text-max-chars"),
   );
-  const pdfTruncationConfig = getEl<HTMLElement>(doc, id("pdf-truncation-config"));
-  const customPromptInput = getEl<HTMLTextAreaElement>(doc, id("custom-prompt"));
-  const defaultPromptView = getEl<HTMLTextAreaElement>(doc, id("default-prompt"));
+  const pdfTruncationConfig = getEl<HTMLElement>(
+    doc,
+    id("pdf-truncation-config"),
+  );
+  const customPromptInput = getEl<HTMLTextAreaElement>(
+    doc,
+    id("custom-prompt"),
+  );
+  const defaultPromptView = getEl<HTMLTextAreaElement>(
+    doc,
+    id("default-prompt"),
+  );
   const customFolderSummaryPromptInput = getEl<HTMLTextAreaElement>(
     doc,
     id("custom-folder-summary-prompt"),
@@ -71,7 +86,10 @@ function initPrefsUI(win: Window) {
   const detectionDetail = getEl<HTMLElement>(doc, id("awesome-detail"));
   const saveBtn = getEl<HTMLButtonElement>(doc, id("save-btn"));
   const refreshBtn = getEl<HTMLButtonElement>(doc, id("refresh-detection-btn"));
-  const secretKeyToggleBtn = getEl<HTMLButtonElement>(doc, id("toggle-secret-key-btn"));
+  const secretKeyToggleBtn = getEl<HTMLButtonElement>(
+    doc,
+    id("toggle-secret-key-btn"),
+  );
   const customFieldset = getEl<HTMLElement>(doc, id("custom-config-fieldset"));
   const apiParamFields = getEl<HTMLElement>(doc, id("api-param-fields"));
 
@@ -92,14 +110,23 @@ function initPrefsUI(win: Window) {
   importPDFAnnotationsAsFieldInput.checked = Boolean(
     settings.importPDFAnnotationsAsField,
   );
-  enablePDFInputTruncationInput.checked = Boolean(settings.enablePDFInputTruncation);
+  enablePDFInputTruncationInput.checked = Boolean(
+    settings.enablePDFInputTruncation,
+  );
   pdfTextMaxCharsInput.value = String(settings.pdfTextMaxChars);
-  pdfAnnotationTextMaxCharsInput.value = String(settings.pdfAnnotationTextMaxChars);
+  pdfAnnotationTextMaxCharsInput.value = String(
+    settings.pdfAnnotationTextMaxChars,
+  );
   customPromptInput.value = settings.customPromptTemplate;
   defaultPromptView.value = getDefaultReviewPromptTemplate();
-  customFolderSummaryPromptInput.value = settings.customFolderSummaryPromptTemplate;
-  defaultFolderSummaryPromptView.value = getDefaultFolderSummaryPromptTemplate();
-  syncPDFTruncationConfigState(enablePDFInputTruncationInput, pdfTruncationConfig);
+  customFolderSummaryPromptInput.value =
+    settings.customFolderSummaryPromptTemplate;
+  defaultFolderSummaryPromptView.value =
+    getDefaultFolderSummaryPromptTemplate();
+  syncPDFTruncationConfigState(
+    enablePDFInputTruncationInput,
+    pdfTruncationConfig,
+  );
 
   renderAwesomeStatus(detectionStatus, detectionDetail, detection);
   void refreshAwesomeDetectionStatus(detectionStatus, detectionDetail);
@@ -120,7 +147,8 @@ function initPrefsUI(win: Window) {
   };
 
   secretKeyToggleBtn.onclick = () => {
-    secretKeyInput.type = secretKeyInput.type === "password" ? "text" : "password";
+    secretKeyInput.type =
+      secretKeyInput.type === "password" ? "text" : "password";
     secretKeyToggleBtn.textContent =
       secretKeyInput.type === "password" ? "显示" : "隐藏";
   };
@@ -136,13 +164,17 @@ function initPrefsUI(win: Window) {
   };
 
   enablePDFInputTruncationInput.onchange = () => {
-    syncPDFTruncationConfigState(enablePDFInputTruncationInput, pdfTruncationConfig);
+    syncPDFTruncationConfigState(
+      enablePDFInputTruncationInput,
+      pdfTruncationConfig,
+    );
   };
 
   saveBtn.onclick = () => {
     try {
       const next = saveReviewSettings({
-        modelConfigMode: modeSelect.value === "awesomegpt" ? "awesomegpt" : "custom",
+        modelConfigMode:
+          modeSelect.value === "awesomegpt" ? "awesomegpt" : "custom",
         apiConfigMode: getZoteroGPTPrefsSnapshot() ? "zoterogpt" : "custom",
         provider: providerSelect.value === "gemini" ? "gemini" : "openai",
         api: apiInput.value.trim(),
@@ -157,7 +189,11 @@ function initPrefsUI(win: Window) {
         embeddingModel: embeddingModelInput.value.trim(),
         embeddingBatchNum: Math.max(
           1,
-          Math.floor(Number(embeddingBatchNumInput.value) || settings.embeddingBatchNum || 10),
+          Math.floor(
+            Number(embeddingBatchNumInput.value) ||
+              settings.embeddingBatchNum ||
+              10,
+          ),
         ),
         timeoutSeconds: 600,
         dailyLimit: Math.max(1, Number(dailyLimitInput.value) || 100),
@@ -167,7 +203,11 @@ function initPrefsUI(win: Window) {
         enablePDFInputTruncation: enablePDFInputTruncationInput.checked,
         pdfTextMaxChars: Math.max(
           1,
-          Math.floor(Number(pdfTextMaxCharsInput.value) || settings.pdfTextMaxChars || 20_000),
+          Math.floor(
+            Number(pdfTextMaxCharsInput.value) ||
+              settings.pdfTextMaxChars ||
+              20_000,
+          ),
         ),
         pdfAnnotationTextMaxChars: Math.max(
           1,
@@ -178,7 +218,8 @@ function initPrefsUI(win: Window) {
           ),
         ),
         customPromptTemplate: customPromptInput.value.trim(),
-        customFolderSummaryPromptTemplate: customFolderSummaryPromptInput.value.trim(),
+        customFolderSummaryPromptTemplate:
+          customFolderSummaryPromptInput.value.trim(),
       });
       syncConfigSectionState(
         modeSelect,
@@ -216,16 +257,16 @@ function renderAwesomeStatus(
 
   statusEl.textContent = "未检测到兼容 GPT 插件";
   statusEl.style.color = "#6b7280";
-  detailEl.textContent =
-    "未检测到兼容插件，可直接使用本插件 API 配置。";
+  detailEl.textContent = "未检测到兼容插件，可直接使用本插件 API 配置。";
 }
 
 function toggleCustomFields(container: HTMLElement, enabled: boolean) {
   container.style.opacity = enabled ? "1" : "0.55";
   const inputs = container.querySelectorAll("input, select, textarea");
   inputs.forEach((el: Element) => {
-    (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).disabled =
-      !enabled;
+    (
+      el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    ).disabled = !enabled;
   });
 }
 
@@ -249,7 +290,8 @@ function renderAPIConfigModeHint(
   hasZoteroGPTConfig: boolean,
 ) {
   if (!usingExitemAPI) {
-    hintEl.textContent = "当前使用兼容 GPT 插件直接提炼，本区接口参数暂不生效。";
+    hintEl.textContent =
+      "当前使用兼容 GPT 插件直接提炼，本区接口参数暂不生效。";
     return;
   }
 
@@ -261,18 +303,23 @@ function renderAPIConfigModeHint(
 
   const snapshot = getZoteroGPTPrefsSnapshot();
   if (!snapshot) {
-    hintEl.textContent = "当前自动优先使用 Zotero GPT 配置；未读取到配置时会回退到 Exitem 本地配置。";
+    hintEl.textContent =
+      "当前自动优先使用 Zotero GPT 配置；未读取到配置时会回退到 Exitem 本地配置。";
     return;
   }
 
   const maskedKey = snapshot.secretKey
     ? `${snapshot.secretKey.slice(0, 4)}...${snapshot.secretKey.slice(-4)}`
     : "未设置";
-  hintEl.textContent =
-    `当前自动使用 Zotero GPT 配置（未检测到时回退 Exitem 本地配置）：api=${snapshot.api}，model=${snapshot.model}，embeddingModel=${snapshot.embeddingModel}，embeddingBatchNum=${snapshot.embeddingBatchNum}，secretKey=${maskedKey}`;
+  hintEl.textContent = `当前自动使用 Zotero GPT 配置（未检测到时回退 Exitem 本地配置）：api=${snapshot.api}，model=${snapshot.model}，embeddingModel=${snapshot.embeddingModel}，embeddingBatchNum=${snapshot.embeddingBatchNum}，secretKey=${maskedKey}`;
 }
 
-function clampNumber(value: number, fallback: number, min: number, max: number) {
+function clampNumber(
+  value: number,
+  fallback: number,
+  min: number,
+  max: number,
+) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, n));

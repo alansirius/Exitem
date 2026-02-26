@@ -323,7 +323,9 @@ async function refreshManagerData(ctx: ManagerContext) {
 function mountManagerUI(ctx: ManagerContext) {
   const win = ctx.helper.window as Window;
   const doc = win.document;
-  const root = doc.getElementById(REVIEW_MANAGER_ROOT_ID) as HTMLDivElement | null;
+  const root = doc.getElementById(
+    REVIEW_MANAGER_ROOT_ID,
+  ) as HTMLDivElement | null;
   if (!root) {
     throw new Error("review manager root not found");
   }
@@ -333,7 +335,8 @@ function mountManagerUI(ctx: ManagerContext) {
   root.style.flexDirection = "column";
   root.style.gap = "8px";
   root.style.padding = "10px";
-  root.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  root.style.fontFamily =
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
   const titleRow = createEl(doc, "div", {
     style: {
@@ -691,7 +694,9 @@ function mountManagerUI(ctx: ManagerContext) {
         .filter((f): f is ReviewFolderRow => Boolean(f))
         .filter((f) => isProtectedFolderName(f.name));
       if (locked.length) {
-        win.alert(`系统文件夹不可删除：${locked.map((f) => f.name).join("、")}`);
+        win.alert(
+          `系统文件夹不可删除：${locked.map((f) => f.name).join("、")}`,
+        );
         return;
       }
       for (const id of ids) {
@@ -795,7 +800,11 @@ function mountManagerUI(ctx: ManagerContext) {
         record_count: allRows.length,
         model_type: `${result.provider}:${result.model}`,
       }).catch((e) => ztoolkit.log(e));
-      await openFolderSummaryDialog(targetFolder.name, result.text, allRows.length);
+      await openFolderSummaryDialog(
+        targetFolder.name,
+        result.text,
+        allRows.length,
+      );
     } catch (e) {
       const message = getReviewErrorMessage(e);
       try {
@@ -831,10 +840,11 @@ function mountManagerUI(ctx: ManagerContext) {
     try {
       ctx.state.moveTargetFolderID = targetFolderID;
       const targetFolderName =
-        ctx.state.folders.find((folder) => folder.id === targetFolderID)?.name ||
-        "目标文件夹";
+        ctx.state.folders.find((folder) => folder.id === targetFolderID)
+          ?.name || "目标文件夹";
       const hiddenByFilter =
-        ctx.state.folderFilterID != null && ctx.state.folderFilterID !== targetFolderID;
+        ctx.state.folderFilterID != null &&
+        ctx.state.folderFilterID !== targetFolderID;
       await assignReviewRecordsFolder(recordIDs, targetFolderID);
       await refreshAndRender(ctx);
       showManagerToast(
@@ -946,7 +956,9 @@ function mountManagerUI(ctx: ManagerContext) {
         `literature-review-${Date.now()}.csv`,
       ).open();
       if (!path) return;
-      const normalizedPath = String(path).endsWith(".csv") ? String(path) : `${path}.csv`;
+      const normalizedPath = String(path).endsWith(".csv")
+        ? String(path)
+        : `${path}.csv`;
       await writeTextFile(normalizedPath, csv);
       await trackReviewEvent("excel_export", {
         timestamp: new Date().toISOString(),
@@ -970,11 +982,13 @@ function renderManager(ctx: ManagerContext) {
   refs.filterStatusText.textContent = `筛选：${
     state.folderFilterID == null
       ? "全部文件夹"
-      : (state.folders.find((f) => f.id === state.folderFilterID)?.name || "已选文件夹")
+      : state.folders.find((f) => f.id === state.folderFilterID)?.name ||
+        "已选文件夹"
   } · 目标：${
     state.moveTargetFolderID == null
       ? "未设置"
-      : (state.folders.find((f) => f.id === state.moveTargetFolderID)?.name || "已选文件夹")
+      : state.folders.find((f) => f.id === state.moveTargetFolderID)?.name ||
+        "已选文件夹"
   }`;
   const totalPages = getTotalPages(state.totalRows, state.pageSize);
   refs.pageInfoText.textContent = `第 ${Math.min(state.page, totalPages)}/${totalPages} 页 · 共 ${state.totalRows} 条`;
@@ -982,8 +996,12 @@ function renderManager(ctx: ManagerContext) {
   refs.pageNextBtn.disabled = state.page >= totalPages;
   refs.pagePrevBtn.style.opacity = refs.pagePrevBtn.disabled ? "0.5" : "1";
   refs.pageNextBtn.style.opacity = refs.pageNextBtn.disabled ? "0.5" : "1";
-  refs.pagePrevBtn.style.cursor = refs.pagePrevBtn.disabled ? "default" : "pointer";
-  refs.pageNextBtn.style.cursor = refs.pageNextBtn.disabled ? "default" : "pointer";
+  refs.pagePrevBtn.style.cursor = refs.pagePrevBtn.disabled
+    ? "default"
+    : "pointer";
+  refs.pageNextBtn.style.cursor = refs.pageNextBtn.disabled
+    ? "default"
+    : "pointer";
 
   renderFolderButtons(ctx);
 
@@ -1078,7 +1096,8 @@ function handleFolderButtonClick(
   }
 
   if (ctx.state.selectedFolderIDs.size === 1) {
-    ctx.state.moveTargetFolderID = Array.from(ctx.state.selectedFolderIDs)[0] || null;
+    ctx.state.moveTargetFolderID =
+      Array.from(ctx.state.selectedFolderIDs)[0] || null;
   }
   renderManager(ctx);
 }
@@ -1101,7 +1120,11 @@ function createFolderButton(
   btn.style.padding = "6px 8px";
   btn.style.borderRadius = "6px";
   btn.style.border = options.active ? "1px solid #3b82f6" : "1px solid #d1d5db";
-  btn.style.background = options.active ? "#eff6ff" : options.selected ? "#f8fafc" : "#fff";
+  btn.style.background = options.active
+    ? "#eff6ff"
+    : options.selected
+      ? "#f8fafc"
+      : "#fff";
   btn.style.color = "#111827";
   btn.style.cursor = "pointer";
   btn.style.fontSize = "12px";
@@ -1153,7 +1176,9 @@ function renderTableBody(ctx: ManagerContext) {
   state.rows.forEach((row, rowIndex) => {
     const tr = createHTMLElement(doc, "tr");
     tr.style.borderBottom = "1px solid #f1f5f9";
-    tr.style.background = state.selectedRecordIDs.has(row.id) ? "#eff6ff" : "#fff";
+    tr.style.background = state.selectedRecordIDs.has(row.id)
+      ? "#eff6ff"
+      : "#fff";
 
     const checkbox = createHTMLElement(doc, "input");
     checkbox.type = "checkbox";
@@ -1161,7 +1186,13 @@ function renderTableBody(ctx: ManagerContext) {
     checkbox.addEventListener("click", (ev) => {
       ev.stopPropagation();
       ev.preventDefault();
-      applyRecordSelectionByEvent(ctx, row.id, rowIndex, ev as MouseEvent, "checkbox");
+      applyRecordSelectionByEvent(
+        ctx,
+        row.id,
+        rowIndex,
+        ev as MouseEvent,
+        "checkbox",
+      );
       renderManager(ctx);
     });
 
@@ -1190,7 +1221,13 @@ function renderTableBody(ctx: ManagerContext) {
       const target = ev.target as HTMLElement;
       const tag = String(target?.tagName || "").toLowerCase();
       if (["input", "a", "button", "select", "textarea"].includes(tag)) return;
-      applyRecordSelectionByEvent(ctx, row.id, rowIndex, ev as MouseEvent, "row");
+      applyRecordSelectionByEvent(
+        ctx,
+        row.id,
+        rowIndex,
+        ev as MouseEvent,
+        "row",
+      );
       renderManager(ctx);
     });
 
@@ -1231,7 +1268,9 @@ function renderPreview(ctx: ManagerContext) {
     row.researchConclusions || "",
     "",
     "关键发现:",
-    ...(row.keyFindings.length ? row.keyFindings.map((v, i) => `${i + 1}. ${v}`) : ["（无）"]),
+    ...(row.keyFindings.length
+      ? row.keyFindings.map((v, i) => `${i + 1}. ${v}`)
+      : ["（无）"]),
     "",
     "PDF批注与笔记:",
     String(row.pdfAnnotationNotesText || "").trim() || "（无）",
@@ -1248,10 +1287,15 @@ function getPrimarySelectedRow(ctx: ManagerContext) {
 }
 
 function resolveMoveTargetFolderID(ctx: ManagerContext) {
-  if (ctx.state.moveTargetFolderID && Number.isFinite(ctx.state.moveTargetFolderID)) {
+  if (
+    ctx.state.moveTargetFolderID &&
+    Number.isFinite(ctx.state.moveTargetFolderID)
+  ) {
     return ctx.state.moveTargetFolderID;
   }
-  const fromLeftSelection = Array.from(ctx.state.selectedFolderIDs).filter(Boolean);
+  const fromLeftSelection = Array.from(ctx.state.selectedFolderIDs).filter(
+    Boolean,
+  );
   if (fromLeftSelection.length === 1) {
     return fromLeftSelection[0];
   }
@@ -1260,7 +1304,9 @@ function resolveMoveTargetFolderID(ctx: ManagerContext) {
 
 function resolveFolderForSummary(ctx: ManagerContext): ReviewFolderRow | null {
   if (ctx.state.folderFilterID != null) {
-    return ctx.state.folders.find((f) => f.id === ctx.state.folderFilterID) || null;
+    return (
+      ctx.state.folders.find((f) => f.id === ctx.state.folderFilterID) || null
+    );
   }
   const selected = Array.from(ctx.state.selectedFolderIDs);
   if (selected.length === 1) {
@@ -1269,9 +1315,13 @@ function resolveFolderForSummary(ctx: ManagerContext): ReviewFolderRow | null {
   return null;
 }
 
-function resolveFolderForRecordRemoval(ctx: ManagerContext): ReviewFolderRow | null {
+function resolveFolderForRecordRemoval(
+  ctx: ManagerContext,
+): ReviewFolderRow | null {
   if (ctx.state.folderFilterID != null) {
-    return ctx.state.folders.find((f) => f.id === ctx.state.folderFilterID) || null;
+    return (
+      ctx.state.folders.find((f) => f.id === ctx.state.folderFilterID) || null
+    );
   }
   const selected = Array.from(ctx.state.selectedFolderIDs);
   if (selected.length === 1) {
@@ -1280,7 +1330,9 @@ function resolveFolderForRecordRemoval(ctx: ManagerContext): ReviewFolderRow | n
   return null;
 }
 
-function cycleSortKey(current: ManagerState["sortKey"]): ManagerState["sortKey"] {
+function cycleSortKey(
+  current: ManagerState["sortKey"],
+): ManagerState["sortKey"] {
   const order: ManagerState["sortKey"][] = [
     "updatedAt",
     "publicationDate",
@@ -1316,22 +1368,29 @@ function isProtectedFolderName(name: string) {
   return String(name || "").trim() === "未分类";
 }
 
-function getRecordFolderLabel(row: Pick<ReviewRecordRow, "folderNames" | "folderName">) {
+function getRecordFolderLabel(
+  row: Pick<ReviewRecordRow, "folderNames" | "folderName">,
+) {
   if (Array.isArray(row.folderNames) && row.folderNames.length) {
     return row.folderNames.join("、");
   }
   return row.folderName || "未分类";
 }
 
-async function openRawRecordEditorDialog(ctx: ManagerContext, row: ReviewRecordRow) {
-  let helper: any;
+async function openRawRecordEditorDialog(
+  ctx: ManagerContext,
+  row: ReviewRecordRow,
+) {
   const prettyRaw = tryPrettyJSON(row.rawAIResponse || "");
   const dialogData: Record<string, any> = {
     rawText: prettyRaw,
     loadCallback: () => {
       try {
         helper?.window?.document?.documentElement?.setAttribute("width", "900");
-        helper?.window?.document?.documentElement?.setAttribute("height", "700");
+        helper?.window?.document?.documentElement?.setAttribute(
+          "height",
+          "700",
+        );
       } catch {
         // ignore
       }
@@ -1392,7 +1451,7 @@ async function openRawRecordEditorDialog(ctx: ManagerContext, row: ReviewRecordR
       false,
     );
 
-  helper = dialog
+  const helper = dialog
     .addButton("保存", "save")
     .addButton("取消", "cancel")
     .setDialogData(dialogData)
@@ -1413,13 +1472,15 @@ async function openFolderSummaryDialog(
   summaryText: string,
   recordCount: number,
 ) {
-  let helper: any;
   const dialogData: Record<string, any> = {
     summaryText: String(summaryText || "").trim(),
     loadCallback: () => {
       try {
         helper?.window?.document?.documentElement?.setAttribute("width", "920");
-        helper?.window?.document?.documentElement?.setAttribute("height", "760");
+        helper?.window?.document?.documentElement?.setAttribute(
+          "height",
+          "760",
+        );
       } catch {
         // ignore
       }
@@ -1478,7 +1539,7 @@ async function openFolderSummaryDialog(
       false,
     );
 
-  helper = dialog
+  const helper = dialog
     .addButton("关闭", "close")
     .setDialogData(dialogData)
     .open(`合并综述 - ${truncate(folderName, 24)}`);
@@ -1638,7 +1699,10 @@ function focusZoteroItem(itemID: number) {
   }
 }
 
-function showManagerToast(text: string, type: "success" | "default" = "success") {
+function showManagerToast(
+  text: string,
+  type: "success" | "default" = "success",
+) {
   new ztoolkit.ProgressWindow(addon.data.config.addonName)
     .createLine({
       text,

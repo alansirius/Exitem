@@ -26,13 +26,16 @@ export async function initializeReviewFeature() {
   registerReviewContextMenu();
 }
 
-export function registerReviewContextMenu(win?: _ZoteroTypes.MainWindow | Window) {
+export function registerReviewContextMenu(
+  win?: _ZoteroTypes.MainWindow | Window,
+) {
   if (win) {
     ensureReviewContextMenuInWindow(win);
     return;
   }
 
-  const wins = (Zotero.getMainWindows?.() || []) as Array<_ZoteroTypes.MainWindow>;
+  const wins = (Zotero.getMainWindows?.() ||
+    []) as Array<_ZoteroTypes.MainWindow>;
   let insertedAny = false;
   for (const mainWin of wins) {
     insertedAny = ensureReviewContextMenuInWindow(mainWin) || insertedAny;
@@ -40,9 +43,14 @@ export function registerReviewContextMenu(win?: _ZoteroTypes.MainWindow | Window
 
   if (insertedAny) return;
 
-  const registered = ztoolkit.Menu.register("item", buildReviewContextMenuOptions());
+  const registered = ztoolkit.Menu.register(
+    "item",
+    buildReviewContextMenuOptions(),
+  );
   if (registered === false) {
-    ztoolkit.log("Review context menu registration skipped: item popup not found");
+    ztoolkit.log(
+      "Review context menu registration skipped: item popup not found",
+    );
   }
 }
 
@@ -58,7 +66,8 @@ export function registerReviewToolbarButton(win: _ZoteroTypes.MainWindow) {
   }
 
   let button: HTMLElement | XULElement;
-  const isXUL = target.namespaceURI && !String(target.namespaceURI).includes("xhtml");
+  const isXUL =
+    target.namespaceURI && !String(target.namespaceURI).includes("xhtml");
   if (isXUL && (doc as any).createXULElement) {
     button = (doc as any).createXULElement("toolbarbutton");
     button.setAttribute("id", id);
@@ -190,14 +199,23 @@ export async function handleExtractFromSelection() {
         article_id: item.id,
         fail_reason: message,
       }).catch((err) => ztoolkit.log(err));
-      progress.changeLine({ text: `提炼失败: ${message}`, type: "error", progress: 100 });
+      progress.changeLine({
+        text: `提炼失败: ${message}`,
+        type: "error",
+        progress: 100,
+      });
       progress.startCloseTimer(5000);
       showAlert(message);
     }
     return;
   }
 
-  const results: Array<{ itemID: number; title: string; ok: boolean; error?: string }> = [];
+  const results: Array<{
+    itemID: number;
+    title: string;
+    ok: boolean;
+    error?: string;
+  }> = [];
   const batchTargetFolder = await resolveBatchSaveFolder();
   let completed = 0;
 
@@ -275,17 +293,18 @@ export async function handleExtractFromSelection() {
 
 async function openReviewResultDialog(draft: LiteratureReviewDraft) {
   await initReviewStore();
-  const folders = await listReviewFolders().catch(() => [] as ReviewFolderRow[]);
-  const existingRecord = await getReviewRecordByItemID(draft.zoteroItemID).catch(
-    () => null,
+  const folders = await listReviewFolders().catch(
+    () => [] as ReviewFolderRow[],
   );
+  const existingRecord = await getReviewRecordByItemID(
+    draft.zoteroItemID,
+  ).catch(() => null);
   const defaultFolderID =
     existingRecord?.folderID ??
     folders.find((folder) => folder.name === "未分类")?.id ??
     folders[0]?.id ??
     null;
 
-  let helper: any;
   const dialogData: Record<string, any> = {
     title: draft.title,
     authors: draft.authors,
@@ -378,7 +397,7 @@ async function openReviewResultDialog(draft: LiteratureReviewDraft) {
     })),
   );
 
-  helper = dialog
+  const helper = dialog
     .addButton("新建文件夹", "new-folder", {
       noClose: true,
       callback: () => {
@@ -428,12 +447,10 @@ async function openReviewResultDialog(draft: LiteratureReviewDraft) {
   });
   rememberLastSaveFolderID(selectedFolderID ?? savedRow.folderID);
   const folderLabel = selectedFolderID
-    ? folders.find((folder) => folder.id === selectedFolderID)?.name || savedRow.folderName
+    ? folders.find((folder) => folder.id === selectedFolderID)?.name ||
+      savedRow.folderName
     : savedRow.folderNames?.join("、") || savedRow.folderName;
-  showToast(
-    `已保存到文献综述页（${folderLabel || "未分类"}）`,
-    "success",
-  );
+  showToast(`已保存到文献综述页（${folderLabel || "未分类"}）`, "success");
 }
 
 function addInputRow(
@@ -563,7 +580,10 @@ function addSelectRow(
   return row + 1;
 }
 
-async function createFolderFromReviewDialog(helper: any, dialogData: Record<string, any>) {
+async function createFolderFromReviewDialog(
+  helper: any,
+  dialogData: Record<string, any>,
+) {
   const win = helper?.window as Window | undefined;
   if (!win) return;
 
@@ -670,7 +690,9 @@ function parseOptionalPositiveInt(value: unknown) {
 
 async function resolveBatchSaveFolder() {
   await initReviewStore();
-  const folders = await listReviewFolders().catch(() => [] as ReviewFolderRow[]);
+  const folders = await listReviewFolders().catch(
+    () => [] as ReviewFolderRow[],
+  );
   const preferredID = getRememberedLastSaveFolderID();
   const matched = preferredID
     ? folders.find((folder) => folder.id === preferredID) || null
@@ -684,7 +706,10 @@ async function resolveBatchSaveFolder() {
 
 function getRememberedLastSaveFolderID() {
   try {
-    const value = Zotero.Prefs.get(`${config.prefsPrefix}.lastSaveFolderID`, true);
+    const value = Zotero.Prefs.get(
+      `${config.prefsPrefix}.lastSaveFolderID`,
+      true,
+    );
     const n = Number(value);
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
   } catch {
@@ -695,7 +720,11 @@ function getRememberedLastSaveFolderID() {
 function rememberLastSaveFolderID(folderID: number | null) {
   try {
     if (folderID && Number.isFinite(folderID) && folderID > 0) {
-      Zotero.Prefs.set(`${config.prefsPrefix}.lastSaveFolderID`, Math.floor(folderID), true);
+      Zotero.Prefs.set(
+        `${config.prefsPrefix}.lastSaveFolderID`,
+        Math.floor(folderID),
+        true,
+      );
       return;
     }
     Zotero.Prefs.clear(`${config.prefsPrefix}.lastSaveFolderID`, true);
@@ -704,7 +733,10 @@ function rememberLastSaveFolderID(folderID: number | null) {
   }
 }
 
-function showToast(text: string, type: "success" | "warning" | "error" | "default" = "default") {
+function showToast(
+  text: string,
+  type: "success" | "warning" | "error" | "default" = "default",
+) {
   new ztoolkit.ProgressWindow(addon.data.config.addonName)
     .createLine({
       text,
@@ -746,13 +778,18 @@ function buildReviewContextMenuOptions() {
 
 function ensureReviewContextMenuInWindow(win: Window) {
   try {
-    const popup = win.document?.querySelector?.("#zotero-itemmenu") as XUL.MenuPopup | null;
+    const popup = win.document?.querySelector?.(
+      "#zotero-itemmenu",
+    ) as XUL.MenuPopup | null;
     if (!popup) return false;
     bindReviewItemMenuPopup(popup);
     if (popup.querySelector(`#${reviewContextMenuID}`)) {
       return true;
     }
-    const registered = ztoolkit.Menu.register(popup, buildReviewContextMenuOptions());
+    const registered = ztoolkit.Menu.register(
+      popup,
+      buildReviewContextMenuOptions(),
+    );
     return registered !== false;
   } catch (e) {
     ztoolkit.log("ensure review context menu failed", e);
@@ -776,7 +813,10 @@ function bindReviewItemMenuPopup(popup: XUL.MenuPopup) {
   boundItemMenuPopups.add(popup);
 }
 
-function createSingleExtractionProgressUpdater(progressWindow: any, item: Zotero.Item) {
+function createSingleExtractionProgressUpdater(
+  progressWindow: any,
+  item: Zotero.Item,
+) {
   const title = truncate(item.getDisplayTitle(), 30);
   let lastProgress = -1;
   let lastStage = "";
@@ -805,15 +845,23 @@ function createBatchExtractionProgressUpdater(
   let lastGlobalProgress = -1;
   let lastStage = "";
   return (update: ReviewExtractionProgress) => {
-    const itemProgress = Math.max(0, Math.min(100, Math.floor(update.progress)));
+    const itemProgress = Math.max(
+      0,
+      Math.min(100, Math.floor(update.progress)),
+    );
     const ratioStart = (options.index - 1) / options.total;
-    const ratioCurrent = (options.index - 1 + itemProgress / 100) / options.total;
+    const ratioCurrent =
+      (options.index - 1 + itemProgress / 100) / options.total;
     const globalProgress = Math.max(
       0,
-      Math.min(99, Math.floor(ratioStart * 100 + (ratioCurrent - ratioStart) * 100)),
+      Math.min(
+        99,
+        Math.floor(ratioStart * 100 + (ratioCurrent - ratioStart) * 100),
+      ),
     );
     const nextStage = String(update.stage || "").trim() || "处理中";
-    if (globalProgress === lastGlobalProgress && nextStage === lastStage) return;
+    if (globalProgress === lastGlobalProgress && nextStage === lastStage)
+      return;
     lastGlobalProgress = globalProgress;
     lastStage = nextStage;
     try {

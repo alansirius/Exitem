@@ -107,12 +107,15 @@ export async function extractLiteratureReview(
   const effectiveSettings = getEffectiveReviewAPISettings(settings);
   const hasConfiguredAPI = Boolean(
     String(effectiveSettings.secretKey || "").trim() &&
-      String(effectiveSettings.model || "").trim(),
+    String(effectiveSettings.model || "").trim(),
   );
   report(35, "整理提炼输入");
 
   if (source.content.length > MAX_SOURCE_CONTENT_CHARS) {
-    throw new ReviewUserError("文献内容过长", "单个文献内容超过 100,000 字符，暂不支持提炼");
+    throw new ReviewUserError(
+      "文献内容过长",
+      "单个文献内容超过 100,000 字符，暂不支持提炼",
+    );
   }
 
   if (settings.modelConfigMode === "awesomegpt") {
@@ -159,11 +162,15 @@ export async function extractLiteratureReview(
     }
     report(
       58,
-      effectiveSettings.provider === "gemini" ? "准备 Gemini 请求" : "准备 AI 请求",
+      effectiveSettings.provider === "gemini"
+        ? "准备 Gemini 请求"
+        : "准备 AI 请求",
     );
     report(
       66,
-      effectiveSettings.provider === "gemini" ? "等待 Gemini 响应" : "等待 AI 响应",
+      effectiveSettings.provider === "gemini"
+        ? "等待 Gemini 响应"
+        : "等待 AI 响应",
     );
     const rawText =
       effectiveSettings.provider === "gemini"
@@ -202,19 +209,27 @@ export async function synthesizeFolderReview(
   options: FolderReviewSummaryOptions = {},
 ): Promise<FolderReviewSummaryResult> {
   const report = createProgressReporter(options.onProgress);
-  const normalizedFolderName = String(folderName || "").trim() || "未命名文件夹";
+  const normalizedFolderName =
+    String(folderName || "").trim() || "未命名文件夹";
   const validRows = (rows || []).filter(Boolean);
   if (!validRows.length) {
-    throw new ReviewUserError("No records in folder", "该文件夹下暂无可用于合并综述的记录");
+    throw new ReviewUserError(
+      "No records in folder",
+      "该文件夹下暂无可用于合并综述的记录",
+    );
   }
 
   report(5, "整理文件夹记录");
-  const recordsContent = buildFolderSummarySourceContent(normalizedFolderName, validRows, report);
+  const recordsContent = buildFolderSummarySourceContent(
+    normalizedFolderName,
+    validRows,
+    report,
+  );
   const settings = getReviewSettings();
   const effectiveSettings = getEffectiveReviewAPISettings(settings);
   const hasConfiguredAPI = Boolean(
     String(effectiveSettings.secretKey || "").trim() &&
-      String(effectiveSettings.model || "").trim(),
+    String(effectiveSettings.model || "").trim(),
   );
   const prompt = buildFolderSummaryPrompt(
     normalizedFolderName,
@@ -260,11 +275,15 @@ export async function synthesizeFolderReview(
     report(40, "检查 AI 配置");
     report(
       56,
-      effectiveSettings.provider === "gemini" ? "准备 Gemini 综述请求" : "准备综述请求",
+      effectiveSettings.provider === "gemini"
+        ? "准备 Gemini 综述请求"
+        : "准备综述请求",
     );
     report(
       68,
-      effectiveSettings.provider === "gemini" ? "等待 Gemini 综述结果" : "等待综述结果",
+      effectiveSettings.provider === "gemini"
+        ? "等待 Gemini 综述结果"
+        : "等待综述结果",
     );
     const text =
       effectiveSettings.provider === "gemini"
@@ -505,7 +524,9 @@ async function callOpenAICompatibleFreeform(
 
   const data: any = await response.json();
   if (!response.ok) {
-    throw new Error((data?.error?.message as string) || `HTTP ${response.status}`);
+    throw new Error(
+      (data?.error?.message as string) || `HTTP ${response.status}`,
+    );
   }
   const content = data?.choices?.[0]?.message?.content;
   if (!content) {
@@ -514,11 +535,12 @@ async function callOpenAICompatibleFreeform(
   return String(content);
 }
 
-async function callGeminiFreeform(
-  settings: ReviewSettings,
-  prompt: string,
-) {
-  const endpoint = buildGeminiEndpoint(settings.api, settings.model, settings.secretKey);
+async function callGeminiFreeform(settings: ReviewSettings, prompt: string) {
+  const endpoint = buildGeminiEndpoint(
+    settings.api,
+    settings.model,
+    settings.secretKey,
+  );
   const response = await fetchWithTimeout(
     endpoint,
     {
@@ -536,7 +558,8 @@ async function callGeminiFreeform(
 
   const data: any = await response.json();
   if (!response.ok) {
-    const msg = data?.error?.message || data?.message || `HTTP ${response.status}`;
+    const msg =
+      data?.error?.message || data?.message || `HTTP ${response.status}`;
     throw new Error(String(msg));
   }
   const parts = data?.candidates?.[0]?.content?.parts;
@@ -555,29 +578,33 @@ async function callOpenAICompatible(
 ) {
   const endpoint = buildOpenAIChatEndpoint(settings.api);
   const prompt = buildPrompt(sourceContent, settings.customPromptTemplate);
-  const response = await fetchWithTimeout(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.secretKey}`,
+  const response = await fetchWithTimeout(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.secretKey}`,
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        temperature: settings.temperature,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "你是一名科研助理。你必须返回严格 JSON，不要输出 Markdown 代码块。",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      }),
     },
-    body: JSON.stringify({
-      model: settings.model,
-      temperature: settings.temperature,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "你是一名科研助理。你必须返回严格 JSON，不要输出 Markdown 代码块。",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    }),
-  }, settings.timeoutSeconds);
+    settings.timeoutSeconds,
+  );
 
   const data: any = await response.json();
   if (!response.ok) {
@@ -593,29 +620,35 @@ async function callOpenAICompatible(
   return String(content);
 }
 
-async function callGemini(
-  settings: ReviewSettings,
-  sourceContent: string,
-) {
-  const endpoint = buildGeminiEndpoint(settings.api, settings.model, settings.secretKey);
+async function callGemini(settings: ReviewSettings, sourceContent: string) {
+  const endpoint = buildGeminiEndpoint(
+    settings.api,
+    settings.model,
+    settings.secretKey,
+  );
   const prompt = buildPrompt(sourceContent, settings.customPromptTemplate);
-  const response = await fetchWithTimeout(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: settings.temperature,
-        responseMimeType: "application/json",
+  const response = await fetchWithTimeout(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    }),
-  }, settings.timeoutSeconds);
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: settings.temperature,
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+    settings.timeoutSeconds,
+  );
 
   const data: any = await response.json();
   if (!response.ok) {
-    const msg = data?.error?.message || data?.message || `HTTP ${response.status}`;
+    const msg =
+      data?.error?.message || data?.message || `HTTP ${response.status}`;
     throw new Error(String(msg));
   }
 
@@ -670,9 +703,9 @@ async function tryCallAwesomeGPT(
       return {
         text,
         model:
-          ((Zotero as any)?.Prefs?.get?.("extensions.zotero.zoterogpt.model") as
-            | string
-            | undefined) || "zotero-gpt",
+          ((Zotero as any)?.Prefs?.get?.(
+            "extensions.zotero.zoterogpt.model",
+          ) as string | undefined) || "zotero-gpt",
       };
     },
   ];
@@ -690,8 +723,10 @@ async function tryCallAwesomeGPT(
       );
       if (!result) continue;
       if (typeof result === "string") return { text: result };
-      if (typeof result?.text === "string") return { text: result.text, model: result.model };
-      if (typeof result?.content === "string") return { text: result.content, model: result.model };
+      if (typeof result?.text === "string")
+        return { text: result.text, model: result.model };
+      if (typeof result?.content === "string")
+        return { text: result.content, model: result.model };
     } catch (e) {
       lastError = e;
       // Try next candidate
@@ -718,7 +753,11 @@ async function enrichSourceContentWithPDFEmbeddings(
   }
 
   report?.(60, "分析 PDF 重点片段");
-  const embeddingContext = await tryBuildPDFEmbeddingContext(source, timeoutSeconds, report);
+  const embeddingContext = await tryBuildPDFEmbeddingContext(
+    source,
+    timeoutSeconds,
+    report,
+  );
   if (!embeddingContext) {
     report?.(68, "未获得 PDF 语义片段，继续提炼");
     return source.content;
@@ -880,14 +919,13 @@ async function fetchOpenAIEmbeddings(
 
   const data: any = await response.json();
   if (!response.ok) {
-    const message = data?.error?.message || data?.message || `HTTP ${response.status}`;
+    const message =
+      data?.error?.message || data?.message || `HTTP ${response.status}`;
     throw new Error(String(message));
   }
 
   const rows = Array.isArray(data?.data) ? [...data.data] : [];
-  rows.sort(
-    (a: any, b: any) => Number(a?.index ?? 0) - Number(b?.index ?? 0),
-  );
+  rows.sort((a: any, b: any) => Number(a?.index ?? 0) - Number(b?.index ?? 0));
   return rows.map((row: any) => toNumericVector(row?.embedding));
 }
 
@@ -901,7 +939,10 @@ async function tryBuildPDFEmbeddingContext(
     const openAI = (mainWin as any)?.Meet?.OpenAI;
     const embedDocuments = openAI?.embedDocuments;
     const embedQuery = openAI?.embedQuery;
-    if (typeof embedDocuments !== "function" || typeof embedQuery !== "function") {
+    if (
+      typeof embedDocuments !== "function" ||
+      typeof embedQuery !== "function"
+    ) {
       return "";
     }
 
@@ -966,7 +1007,9 @@ function buildPDFEmbeddingQuery(source: ReviewItemSource) {
   return [
     `请提取文献《${source.title || "未命名文献"}》中与研究背景、研究方法、研究结论、关键发现相关的段落。`,
     source.authors ? `作者：${source.authors}` : "",
-    source.abstractText ? `摘要线索：${truncateText(source.abstractText, 600)}` : "",
+    source.abstractText
+      ? `摘要线索：${truncateText(source.abstractText, 600)}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -994,7 +1037,8 @@ function chunkTextForEmbedding(text: string) {
       if (current) flush();
       for (let i = 0; i < paragraph.length; i += EMBEDDING_CHUNK_CHARS) {
         chunks.push(paragraph.slice(i, i + EMBEDDING_CHUNK_CHARS).trim());
-        if (chunks.length >= EMBEDDING_MAX_CHUNKS) return chunks.filter(Boolean);
+        if (chunks.length >= EMBEDDING_MAX_CHUNKS)
+          return chunks.filter(Boolean);
       }
       continue;
     }
@@ -1018,9 +1062,7 @@ function chunkTextForEmbedding(text: string) {
 
 function toNumericVector(value: unknown) {
   if (!Array.isArray(value)) return [] as number[];
-  return value
-    .map((v) => Number(v))
-    .filter((v) => Number.isFinite(v));
+  return value.map((v) => Number(v)).filter((v) => Number.isFinite(v));
 }
 
 function cosineSimilarity(a: number[], b: number[]) {
@@ -1071,7 +1113,9 @@ function normalizeDraft(
     parsed.keyFindings || parsed.key_findings || parsed.findings || [],
   );
   const classificationTags = coerceArray(
-    parsed.classificationTags || parsed.classification_tags || context.source.zoteroTags,
+    parsed.classificationTags ||
+      parsed.classification_tags ||
+      context.source.zoteroTags,
   );
 
   const draft: LiteratureReviewDraft = {
@@ -1083,13 +1127,19 @@ function normalizeDraft(
       parsed.publicationDate || parsed.publication_date,
       context.source.date,
     ),
-    abstractText: pickString(parsed.abstract || parsed.abstractText, context.source.abstractText),
+    abstractText: pickString(
+      parsed.abstract || parsed.abstractText,
+      context.source.abstractText,
+    ),
     pdfAnnotationNotesText: context.source.importPDFAnnotationsAsField
       ? String(context.source.pdfAnnotationText || "")
       : "",
     researchBackground: pickString(
       parsed.researchBackground || parsed.background,
-      summarizeAbstract(context.source.abstractText, "研究背景信息不足，建议人工补充。"),
+      summarizeAbstract(
+        context.source.abstractText,
+        "研究背景信息不足，建议人工补充。",
+      ),
     ),
     literatureReview: pickString(
       parsed.literatureReview || parsed.review,
@@ -1106,7 +1156,9 @@ function normalizeDraft(
     keyFindings: keyFindings.length
       ? keyFindings
       : ["AI 未返回关键发现列表，请结合原文补充。"],
-    classificationTags: classificationTags.length ? classificationTags : context.source.zoteroTags,
+    classificationTags: classificationTags.length
+      ? classificationTags
+      : context.source.zoteroTags,
     aiProvider: context.provider,
     aiModel: context.model,
     rawAIResponse: cleaned,
@@ -1118,7 +1170,10 @@ function normalizeDraft(
 function buildPrompt(sourceContent: string, customPromptTemplate = "") {
   const template = String(customPromptTemplate || "").trim();
   if (!template) {
-    return DEFAULT_REVIEW_PROMPT_TEMPLATE.replace(/\{\{sourceContent\}\}/g, sourceContent);
+    return DEFAULT_REVIEW_PROMPT_TEMPLATE.replace(
+      /\{\{sourceContent\}\}/g,
+      sourceContent,
+    );
   }
 
   if (/\{\{source(Content|_content)\}\}/.test(template)) {
@@ -1137,9 +1192,10 @@ function buildFolderSummaryPrompt(
 ) {
   const template = String(customPromptTemplate || "").trim();
   if (!template) {
-    return DEFAULT_FOLDER_SUMMARY_PROMPT_TEMPLATE
-      .replace(/\{\{folderName\}\}/g, folderName)
-      .replace(/\{\{recordsContent\}\}/g, recordsContent);
+    return DEFAULT_FOLDER_SUMMARY_PROMPT_TEMPLATE.replace(
+      /\{\{folderName\}\}/g,
+      folderName,
+    ).replace(/\{\{recordsContent\}\}/g, recordsContent);
   }
 
   const hasFolderPlaceholder = /\{\{folderName\}\}/.test(template);
@@ -1203,7 +1259,10 @@ function buildFolderSummarySourceContent(
       "研究结论:",
       truncateText(String(row.researchConclusions || ""), 1200),
       "关键发现:",
-      (row.keyFindings || []).slice(0, 10).map((v, idx) => `${idx + 1}. ${v}`).join("\n"),
+      (row.keyFindings || [])
+        .slice(0, 10)
+        .map((v, idx) => `${idx + 1}. ${v}`)
+        .join("\n"),
     ]
       .map((v) => String(v ?? "").trimEnd())
       .filter((v) => v.length > 0)
@@ -1241,11 +1300,17 @@ function buildOpenAIEmbeddingsEndpoint(api: string) {
   return `${base}/v1/embeddings`;
 }
 
-function buildGeminiEndpoint(apiBaseURL: string, model: string, apiKey: string) {
+function buildGeminiEndpoint(
+  apiBaseURL: string,
+  model: string,
+  apiKey: string,
+) {
   const trimmed = (apiBaseURL || "").trim();
   if (trimmed) {
     if (trimmed.includes(":generateContent")) {
-      return trimmed.includes("?") ? trimmed : `${trimmed}?key=${encodeURIComponent(apiKey)}`;
+      return trimmed.includes("?")
+        ? trimmed
+        : `${trimmed}?key=${encodeURIComponent(apiKey)}`;
     }
     const base = trimmed.replace(/\/$/, "");
     return `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -1267,7 +1332,10 @@ async function fetchWithTimeout(
     });
   } catch (e: any) {
     if (e?.name === "AbortError") {
-      throw new ReviewUserError("AI request timeout", `AI 请求超时（>${timeoutSeconds}秒），请重试`);
+      throw new ReviewUserError(
+        "AI request timeout",
+        `AI 请求超时（>${timeoutSeconds}秒），请重试`,
+      );
     }
     throw e;
   } finally {
@@ -1288,7 +1356,10 @@ function pickString(input: unknown, fallback = "") {
 
 function coerceArray(input: unknown) {
   if (Array.isArray(input)) {
-    return input.map((v) => String(v).trim()).filter(Boolean).slice(0, 20);
+    return input
+      .map((v) => String(v).trim())
+      .filter(Boolean)
+      .slice(0, 20);
   }
   if (typeof input === "string") {
     return input
@@ -1302,7 +1373,11 @@ function coerceArray(input: unknown) {
 
 function humanizeAIError(message: string) {
   const msg = message.toLowerCase();
-  if (msg.includes("401") || msg.includes("unauthorized") || msg.includes("api key")) {
+  if (
+    msg.includes("401") ||
+    msg.includes("unauthorized") ||
+    msg.includes("api key")
+  ) {
     return "请检查AI模型配置：API Key 无效或未授权";
   }
   if (msg.includes("429") || msg.includes("rate")) {
@@ -1389,7 +1464,8 @@ async function getPDFAnnotationSource(
       const truncationEnabled = Boolean(settings.enablePDFInputTruncation);
       const annotationMaxChars = Math.max(
         1,
-        Number(settings.pdfAnnotationTextMaxChars) || MAX_PDF_ANNOTATION_TEXT_CHARS,
+        Number(settings.pdfAnnotationTextMaxChars) ||
+          MAX_PDF_ANNOTATION_TEXT_CHARS,
       );
       return {
         text: truncationEnabled
@@ -1434,7 +1510,9 @@ async function getPDFTextSource(
       Number(settings.pdfTextMaxChars) || MAX_PDF_TEXT_CHARS,
     );
     return {
-      text: truncationEnabled ? truncateText(normalized, pdfTextMaxChars) : normalized,
+      text: truncationEnabled
+        ? truncateText(normalized, pdfTextMaxChars)
+        : normalized,
       label: buildAttachmentLabel(attachment),
     };
   }
@@ -1443,7 +1521,9 @@ async function getPDFTextSource(
 }
 
 function isPDFAttachmentItem(attachment: Zotero.Item) {
-  const mimeType = String((attachment as any)?.attachmentContentType || "").toLowerCase();
+  const mimeType = String(
+    (attachment as any)?.attachmentContentType || "",
+  ).toLowerCase();
   return (
     (typeof (attachment as any)?.isPDFAttachment === "function" &&
       Boolean((attachment as any).isPDFAttachment())) ||
@@ -1491,7 +1571,9 @@ function buildAnnotationBlock(annotation: any, index: number) {
 
   const pageLabel = getAnnotationPageLabel(annotation);
   const typeLabel = mapAnnotationTypeLabel(annotation?.annotationType);
-  const lines = [`${index}. [${pageLabel}]${typeLabel ? `[${typeLabel}]` : ""}`];
+  const lines = [
+    `${index}. [${pageLabel}]${typeLabel ? `[${typeLabel}]` : ""}`,
+  ];
   if (text) lines.push(`摘录: ${text}`);
   if (comment) lines.push(`批注: ${comment}`);
   if (childNotes) lines.push(`批注下笔记: ${childNotes}`);
@@ -1501,7 +1583,8 @@ function buildAnnotationBlock(annotation: any, index: number) {
 function normalizeAnnotationField(value: unknown) {
   return String(value || "")
     .replace(/\r\n/g, "\n")
-    .replace(/\u0000/g, " ")
+    .split("\u0000")
+    .join(" ")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -1580,7 +1663,9 @@ function mapAnnotationTypeLabel(type: unknown) {
   }
 }
 
-async function getCandidateAttachments(item: Zotero.Item): Promise<Zotero.Item[]> {
+async function getCandidateAttachments(
+  item: Zotero.Item,
+): Promise<Zotero.Item[]> {
   const result: Zotero.Item[] = [];
   const seen = new Set<number>();
   const push = (attachment: Zotero.Item | false | null | undefined) => {
@@ -1618,7 +1703,9 @@ async function getCandidateAttachments(item: Zotero.Item): Promise<Zotero.Item[]
   try {
     const attachmentIDs = (item.getAttachments?.() || []) as number[];
     for (const attachmentID of attachmentIDs) {
-      push((Zotero.Items as any)?.get?.(attachmentID) as Zotero.Item | undefined);
+      push(
+        (Zotero.Items as any)?.get?.(attachmentID) as Zotero.Item | undefined,
+      );
     }
   } catch {
     // ignore
@@ -1651,7 +1738,8 @@ async function tryIndexAttachmentText(attachment: Zotero.Item) {
 function normalizeAttachmentText(text: string) {
   return String(text || "")
     .replace(/\r\n/g, "\n")
-    .replace(/\u0000/g, " ")
+    .split("\u0000")
+    .join(" ")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
