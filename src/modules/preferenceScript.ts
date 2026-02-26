@@ -46,6 +46,16 @@ function initPrefsUI(win: Window) {
     doc,
     id("import-pdf-annotations-as-field"),
   );
+  const enablePDFInputTruncationInput = getEl<HTMLInputElement>(
+    doc,
+    id("enable-pdf-input-truncation"),
+  );
+  const pdfTextMaxCharsInput = getEl<HTMLInputElement>(doc, id("pdf-text-max-chars"));
+  const pdfAnnotationTextMaxCharsInput = getEl<HTMLInputElement>(
+    doc,
+    id("pdf-annotation-text-max-chars"),
+  );
+  const pdfTruncationConfig = getEl<HTMLElement>(doc, id("pdf-truncation-config"));
   const customPromptInput = getEl<HTMLTextAreaElement>(doc, id("custom-prompt"));
   const defaultPromptView = getEl<HTMLTextAreaElement>(doc, id("default-prompt"));
   const customFolderSummaryPromptInput = getEl<HTMLTextAreaElement>(
@@ -82,10 +92,14 @@ function initPrefsUI(win: Window) {
   importPDFAnnotationsAsFieldInput.checked = Boolean(
     settings.importPDFAnnotationsAsField,
   );
+  enablePDFInputTruncationInput.checked = Boolean(settings.enablePDFInputTruncation);
+  pdfTextMaxCharsInput.value = String(settings.pdfTextMaxChars);
+  pdfAnnotationTextMaxCharsInput.value = String(settings.pdfAnnotationTextMaxChars);
   customPromptInput.value = settings.customPromptTemplate;
   defaultPromptView.value = getDefaultReviewPromptTemplate();
   customFolderSummaryPromptInput.value = settings.customFolderSummaryPromptTemplate;
   defaultFolderSummaryPromptView.value = getDefaultFolderSummaryPromptTemplate();
+  syncPDFTruncationConfigState(enablePDFInputTruncationInput, pdfTruncationConfig);
 
   renderAwesomeStatus(detectionStatus, detectionDetail, detection);
   void refreshAwesomeDetectionStatus(detectionStatus, detectionDetail);
@@ -121,6 +135,10 @@ function initPrefsUI(win: Window) {
     );
   };
 
+  enablePDFInputTruncationInput.onchange = () => {
+    syncPDFTruncationConfigState(enablePDFInputTruncationInput, pdfTruncationConfig);
+  };
+
   saveBtn.onclick = () => {
     try {
       const next = saveReviewSettings({
@@ -146,6 +164,19 @@ function initPrefsUI(win: Window) {
         usePDFAsInputSource: usePDFAsInputSourceInput.checked,
         usePDFAnnotationsAsContext: usePDFAnnotationsAsContextInput.checked,
         importPDFAnnotationsAsField: importPDFAnnotationsAsFieldInput.checked,
+        enablePDFInputTruncation: enablePDFInputTruncationInput.checked,
+        pdfTextMaxChars: Math.max(
+          1,
+          Math.floor(Number(pdfTextMaxCharsInput.value) || settings.pdfTextMaxChars || 20_000),
+        ),
+        pdfAnnotationTextMaxChars: Math.max(
+          1,
+          Math.floor(
+            Number(pdfAnnotationTextMaxCharsInput.value) ||
+              settings.pdfAnnotationTextMaxChars ||
+              12_000,
+          ),
+        ),
         customPromptTemplate: customPromptInput.value.trim(),
         customFolderSummaryPromptTemplate: customFolderSummaryPromptInput.value.trim(),
       });
@@ -245,6 +276,13 @@ function clampNumber(value: number, fallback: number, min: number, max: number) 
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, n));
+}
+
+function syncPDFTruncationConfigState(
+  enabledInput: HTMLInputElement,
+  configEl: HTMLElement,
+) {
+  toggleCustomFields(configEl, enabledInput.checked);
 }
 
 function id(suffix: string) {

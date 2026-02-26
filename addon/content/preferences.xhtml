@@ -162,7 +162,7 @@
               id="zotero-prefpane-__addonRef__-use-pdf-as-input-source"
               type="checkbox"
             />
-            <html:span style="margin-left:6px; color:#334155;">启用后读取 PDF 全文（截断后）参与提炼</html:span>
+            <html:span style="margin-left:6px; color:#334155;">启用后读取 PDF 全文参与提炼（可配截断上限）</html:span>
           </html:div>
 
           <html:label for="zotero-prefpane-__addonRef__-use-pdf-annotations-as-context">将 PDF 批注及笔记作为 AI 提炼上下文</html:label>
@@ -181,6 +181,40 @@
               type="checkbox"
             />
             <html:span style="margin-left:6px; color:#334155;">启用后保存到文献记录字段（用于预览、导出、合并综述）</html:span>
+          </html:div>
+
+          <html:label for="zotero-prefpane-__addonRef__-enable-pdf-input-truncation">启用 PDF 输入截断保护</html:label>
+          <html:div>
+            <html:input
+              id="zotero-prefpane-__addonRef__-enable-pdf-input-truncation"
+              type="checkbox"
+            />
+            <html:span style="margin-left:6px; color:#334155;">开启后按下方上限截断 PDF 原文与 PDF 批注文本；关闭后将尽量传入完整文本</html:span>
+            <html:div
+              id="zotero-prefpane-__addonRef__-pdf-truncation-config"
+              style="margin-top:8px; display:grid; grid-template-columns:170px 1fr; gap:8px; align-items:center;"
+            >
+              <html:label for="zotero-prefpane-__addonRef__-pdf-text-max-chars">PDF 原文截断上限（字符）</html:label>
+              <html:input
+                id="zotero-prefpane-__addonRef__-pdf-text-max-chars"
+                type="number"
+                min="1"
+                max="1000000"
+                step="100"
+              />
+
+              <html:label for="zotero-prefpane-__addonRef__-pdf-annotation-text-max-chars">PDF 批注截断上限（字符）</html:label>
+              <html:input
+                id="zotero-prefpane-__addonRef__-pdf-annotation-text-max-chars"
+                type="number"
+                min="1"
+                max="1000000"
+                step="100"
+              />
+            </html:div>
+            <html:div style="margin-top:6px; font-size:12px; color:#64748b; line-height:1.4;">
+              关闭截断保护后，长文献更容易触发“单篇内容超过 100,000 字符”、模型上下文超限、超时或费用上升。
+            </html:div>
           </html:div>
         </html:div>
       </html:fieldset>

@@ -333,10 +333,10 @@ async function buildItemSource(
     Boolean(settings.usePDFAnnotationsAsContext) ||
     Boolean(settings.importPDFAnnotationsAsField);
   const pdfAnnotationSource = shouldReadPDFAnnotations
-    ? await getPDFAnnotationSource(item, report)
+    ? await getPDFAnnotationSource(item, settings, report)
     : { text: "", label: "" };
   const pdfSource = settings.usePDFAsInputSource
-    ? await getPDFTextSource(item, report)
+    ? await getPDFTextSource(item, settings, report)
     : { text: "", label: "" };
   report?.(30, "整理文献内容");
 
@@ -351,10 +351,10 @@ async function buildItemSource(
     abstractText || "（无摘要）",
     noteText ? "\n补充笔记:\n" + noteText : "",
     settings.usePDFAnnotationsAsContext && pdfAnnotationSource.text
-      ? `\nPDF批注与批注下笔记（${pdfAnnotationSource.label || "附件"}，已截取）：\n${pdfAnnotationSource.text}`
+      ? `\nPDF批注与批注下笔记（${pdfAnnotationSource.label || "附件"}）：\n${pdfAnnotationSource.text}`
       : "",
     pdfSource.text
-      ? `\nPDF原文（${pdfSource.label || "附件"}，已截取）：\n${pdfSource.text}`
+      ? `\nPDF原文（${pdfSource.label || "附件"}）：\n${pdfSource.text}`
       : "",
   ]
     .filter((v) => v != null && String(v).length > 0)
@@ -1362,6 +1362,7 @@ function getNoteText(item: Zotero.Item) {
 
 async function getPDFAnnotationSource(
   item: Zotero.Item,
+  settings: ReviewSettings,
   report?: ReviewProgressReporter,
 ): Promise<{ text: string; label: string }> {
   try {
@@ -1385,12 +1386,19 @@ async function getPDFAnnotationSource(
       if (!lines.length) continue;
 
       const joined = lines.join("\n\n");
+      const truncationEnabled = Boolean(settings.enablePDFInputTruncation);
+      const annotationMaxChars = Math.max(
+        1,
+        Number(settings.pdfAnnotationTextMaxChars) || MAX_PDF_ANNOTATION_TEXT_CHARS,
+      );
       return {
-        text: truncateTextWithNotice(
-          joined,
-          MAX_PDF_ANNOTATION_TEXT_CHARS,
-          `PDF批注内容已截断，超过 ${MAX_PDF_ANNOTATION_TEXT_CHARS} 字符`,
-        ),
+        text: truncationEnabled
+          ? truncateTextWithNotice(
+              joined,
+              annotationMaxChars,
+              `PDF批注内容已截断，超过 ${annotationMaxChars} 字符`,
+            )
+          : joined,
         label: buildAttachmentLabel(attachment),
       };
     }
@@ -1401,7 +1409,11 @@ async function getPDFAnnotationSource(
   return { text: "", label: "" };
 }
 
-async function getPDFTextSource(item: Zotero.Item, report?: ReviewProgressReporter) {
+async function getPDFTextSource(
+  item: Zotero.Item,
+  settings: ReviewSettings,
+  report?: ReviewProgressReporter,
+) {
   const attachments = await getCandidateAttachments(item);
   for (const attachment of attachments) {
     if (!isPDFAttachmentItem(attachment)) continue;
@@ -1416,8 +1428,13 @@ async function getPDFTextSource(item: Zotero.Item, report?: ReviewProgressReport
     if (!normalized) continue;
 
     report?.(28, "提取 PDF 文本");
+    const truncationEnabled = Boolean(settings.enablePDFInputTruncation);
+    const pdfTextMaxChars = Math.max(
+      1,
+      Number(settings.pdfTextMaxChars) || MAX_PDF_TEXT_CHARS,
+    );
     return {
-      text: truncateText(normalized, MAX_PDF_TEXT_CHARS),
+      text: truncationEnabled ? truncateText(normalized, pdfTextMaxChars) : normalized,
       label: buildAttachmentLabel(attachment),
     };
   }

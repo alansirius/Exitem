@@ -23,6 +23,9 @@ const DEFAULTS: ReviewSettings = {
   usePDFAsInputSource: true,
   usePDFAnnotationsAsContext: true,
   importPDFAnnotationsAsField: true,
+  enablePDFInputTruncation: false,
+  pdfTextMaxChars: 20_000,
+  pdfAnnotationTextMaxChars: 12_000,
   customPromptTemplate: "",
   customFolderSummaryPromptTemplate: "",
 };
@@ -72,6 +75,21 @@ export function getReviewSettings(): ReviewSettings {
       getPref("importPDFAnnotationsAsField"),
       DEFAULTS.importPDFAnnotationsAsField,
     ),
+    enablePDFInputTruncation: normalizeBool(
+      getPref("enablePDFInputTruncation"),
+      DEFAULTS.enablePDFInputTruncation,
+    ),
+    pdfTextMaxChars: Math.max(
+      1,
+      normalizeInt(getPref("pdfTextMaxChars"), DEFAULTS.pdfTextMaxChars),
+    ),
+    pdfAnnotationTextMaxChars: Math.max(
+      1,
+      normalizeInt(
+        getPref("pdfAnnotationTextMaxChars"),
+        DEFAULTS.pdfAnnotationTextMaxChars,
+      ),
+    ),
     customPromptTemplate: String(
       getPref("customPromptTemplate") || DEFAULTS.customPromptTemplate,
     ).trim(),
@@ -107,6 +125,12 @@ export function saveReviewSettings(input: Partial<ReviewSettings>) {
   setPref(
     "importPDFAnnotationsAsField",
     Boolean(next.importPDFAnnotationsAsField),
+  );
+  setPref("enablePDFInputTruncation", Boolean(next.enablePDFInputTruncation));
+  setPref("pdfTextMaxChars", Math.max(1, normalizeInt(next.pdfTextMaxChars, 20_000)));
+  setPref(
+    "pdfAnnotationTextMaxChars",
+    Math.max(1, normalizeInt(next.pdfAnnotationTextMaxChars, 12_000)),
   );
   setPref("customPromptTemplate", next.customPromptTemplate);
   setPref(

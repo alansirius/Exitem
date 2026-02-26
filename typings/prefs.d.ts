@@ -23,6 +23,9 @@ declare namespace _ZoteroTypes {
       "usePDFAsInputSource": boolean;
       "usePDFAnnotationsAsContext": boolean;
       "importPDFAnnotationsAsField": boolean;
+      "enablePDFInputTruncation": boolean;
+      "pdfTextMaxChars": number;
+      "pdfAnnotationTextMaxChars": number;
       "customPromptTemplate": string;
       "customFolderSummaryPromptTemplate": string;
     };
