@@ -7,8 +7,24 @@
 declare namespace _ZoteroTypes {
   interface Prefs {
     PluginPrefsMap: {
-      "enable": boolean;
-      "input": string;
+      "modelConfigMode": string;
+      "apiConfigMode": string;
+      "provider": string;
+      "api": string;
+      "secretKey": string;
+      "embeddingModel": string;
+      "embeddingBatchNum": number;
+      "temperature": number;
+      "apiBaseURL": string;
+      "apiKey": string;
+      "model": string;
+      "timeoutSeconds": number;
+      "dailyLimit": number;
+      "usePDFAsInputSource": boolean;
+      "usePDFAnnotationsAsContext": boolean;
+      "importPDFAnnotationsAsField": boolean;
+      "customPromptTemplate": string;
+      "customFolderSummaryPromptTemplate": string;
     };
   }
 }
