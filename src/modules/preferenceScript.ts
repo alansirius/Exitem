@@ -126,7 +126,9 @@ function initPrefsUI(win: Window) {
       pdfTextMaxChars: Math.max(
         1,
         Math.floor(
-          Number(pdfTextMaxCharsInput.value) || current.pdfTextMaxChars || 20_000,
+          Number(pdfTextMaxCharsInput.value) ||
+            current.pdfTextMaxChars ||
+            20_000,
         ),
       ),
       pdfAnnotationTextMaxChars: Math.max(

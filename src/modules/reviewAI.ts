@@ -897,23 +897,27 @@ const PROMPT_FIELD_ALIAS_MAP: Record<string, ReviewPromptFieldKey> = {
   批注与笔记: "pdfAnnotationNotesText",
 };
 
-const PROMPT_FIELD_DETECTION_PATTERNS: Record<ReviewPromptFieldKey, RegExp[]> = {
-  title: [/\btitle\b/i, /标题/],
-  authors: [/\bauthors?\b/i, /作者/],
-  journal: [/\bjournal\b/i, /期刊/],
-  publicationDate: [/\bpublication[_\s-]?date\b/i, /发表时间|发布时间|日期|时间/],
-  abstract: [/\babstract(?:text)?\b/i, /摘要/],
-  researchBackground: [/\bresearch[_\s-]?background\b/i, /研究背景|背景/],
-  literatureReview: [/\bliterature[_\s-]?review\b/i, /文献综述/],
-  researchMethods: [/\bresearch[_\s-]?methods?\b/i, /研究方法|方法/],
-  researchConclusions: [/\bresearch[_\s-]?conclusions?\b/i, /研究结论|结论/],
-  keyFindings: [/\bkey[_\s-]?findings?\b/i, /关键发现/],
-  classificationTags: [/\bclassification[_\s-]?tags?\b/i, /分类标签|标签/],
-  pdfAnnotationNotesText: [
-    /\bpdf[_\s-]?annotation[_\s-]?notes?(?:[_\s-]?text)?\b/i,
-    /pdf批注与笔记|pdf批注|批注与笔记/,
-  ],
-};
+const PROMPT_FIELD_DETECTION_PATTERNS: Record<ReviewPromptFieldKey, RegExp[]> =
+  {
+    title: [/\btitle\b/i, /标题/],
+    authors: [/\bauthors?\b/i, /作者/],
+    journal: [/\bjournal\b/i, /期刊/],
+    publicationDate: [
+      /\bpublication[_\s-]?date\b/i,
+      /发表时间|发布时间|日期|时间/,
+    ],
+    abstract: [/\babstract(?:text)?\b/i, /摘要/],
+    researchBackground: [/\bresearch[_\s-]?background\b/i, /研究背景|背景/],
+    literatureReview: [/\bliterature[_\s-]?review\b/i, /文献综述/],
+    researchMethods: [/\bresearch[_\s-]?methods?\b/i, /研究方法|方法/],
+    researchConclusions: [/\bresearch[_\s-]?conclusions?\b/i, /研究结论|结论/],
+    keyFindings: [/\bkey[_\s-]?findings?\b/i, /关键发现/],
+    classificationTags: [/\bclassification[_\s-]?tags?\b/i, /分类标签|标签/],
+    pdfAnnotationNotesText: [
+      /\bpdf[_\s-]?annotation[_\s-]?notes?(?:[_\s-]?text)?\b/i,
+      /pdf批注与笔记|pdf批注|批注与笔记/,
+    ],
+  };
 
 function buildFolderSummaryPrompt(
   folderName: string,

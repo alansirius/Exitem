@@ -371,7 +371,10 @@ export async function createFolderSummaryRecord(input: {
       researchMethods: "",
       researchConclusions: "",
       keyFindings: [],
-      classificationTags: normalizeStringArray(["合并综述", normalizedFolderName]),
+      classificationTags: normalizeStringArray([
+        "合并综述",
+        normalizedFolderName,
+      ]),
       aiProvider: String(input.aiProvider || ""),
       aiModel: String(input.aiModel || ""),
       rawAIResponse: String(input.summaryText || "").trim(),
@@ -494,7 +497,9 @@ export async function removeReviewRecordsFromFolder(
   });
 }
 
-export async function deleteReviewRecords(recordIDs: number[]): Promise<number> {
+export async function deleteReviewRecords(
+  recordIDs: number[],
+): Promise<number> {
   return withStoreOp(async () => {
     const store = await loadStoreData();
     ensureStoreIntegrity(store);
@@ -515,7 +520,9 @@ export async function deleteReviewRecords(recordIDs: number[]): Promise<number> 
     }
 
     const timestamp = nowISO();
-    store.records = store.records.filter((record) => !effectiveIDSet.has(record.id));
+    store.records = store.records.filter(
+      (record) => !effectiveIDSet.has(record.id),
+    );
     store.recordFolderLinks = store.recordFolderLinks.filter(
       (link) => !effectiveIDSet.has(link.recordID),
     );

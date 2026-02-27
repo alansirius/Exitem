@@ -38,7 +38,8 @@ export function getReviewSettings(): ReviewSettings {
     model: snapshot?.model || DEFAULTS.model,
     temperature: snapshot?.temperature ?? DEFAULTS.temperature,
     embeddingModel: snapshot?.embeddingModel || DEFAULTS.embeddingModel,
-    embeddingBatchNum: snapshot?.embeddingBatchNum || DEFAULTS.embeddingBatchNum,
+    embeddingBatchNum:
+      snapshot?.embeddingBatchNum || DEFAULTS.embeddingBatchNum,
     timeoutSeconds: Math.max(
       DEFAULTS.timeoutSeconds,
       normalizeInt(getPref("timeoutSeconds"), DEFAULTS.timeoutSeconds),

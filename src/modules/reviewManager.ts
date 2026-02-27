@@ -4,7 +4,10 @@ import {
   parseReviewPromptFieldKeys,
   synthesizeFolderReview,
 } from "./reviewAI";
-import type { ReviewExtractionProgress, ReviewPromptFieldKey } from "./reviewAI";
+import type {
+  ReviewExtractionProgress,
+  ReviewPromptFieldKey,
+} from "./reviewAI";
 import { getReviewSettings } from "./reviewConfig";
 import {
   assignReviewRecordsFolder,
@@ -765,7 +768,11 @@ function mountManagerUI(ctx: ManagerContext) {
       minWidth: "0",
     },
   });
-  tableToolbar.append(toolbarLeftSpacer, switchControlCenter, toolbarRightSpacer);
+  tableToolbar.append(
+    toolbarLeftSpacer,
+    switchControlCenter,
+    toolbarRightSpacer,
+  );
 
   const tableScrollWrap = createEl(doc, "div", {
     style: {
@@ -1181,7 +1188,11 @@ function mountManagerUI(ctx: ManagerContext) {
       win.alert("请先在表格中勾选记录");
       return;
     }
-    if (!win.confirm(`确认彻底删除所选 ${recordIDs.length} 条记录？该操作不可恢复。`)) {
+    if (
+      !win.confirm(
+        `确认彻底删除所选 ${recordIDs.length} 条记录？该操作不可恢复。`,
+      )
+    ) {
       return;
     }
     try {
@@ -1518,7 +1529,10 @@ function syncTableSizing(ctx: ManagerContext, columns: TableColumnSpec[]) {
 }
 
 function getPreferredTableWidth(columns: TableColumnSpec[]) {
-  return columns.reduce((total, column) => total + getTableColumnWidth(column), 0);
+  return columns.reduce(
+    (total, column) => total + getTableColumnWidth(column),
+    0,
+  );
 }
 
 function getTableColumnWidth(column: TableColumnSpec) {
@@ -1546,13 +1560,7 @@ function getLiteratureTableColumns(
   const fields = normalizeLiteraturePromptFieldKeys(promptFieldKeys);
   const orderedFields: ReviewPromptFieldKey[] = fields.length
     ? fields
-    : [
-        "title",
-        "authors",
-        "journal",
-        "publicationDate",
-        "classificationTags",
-      ];
+    : ["title", "authors", "journal", "publicationDate", "classificationTags"];
   if (!orderedFields.includes("title")) {
     orderedFields.unshift("title");
   }
@@ -1609,7 +1617,9 @@ function getFolderSummaryTableColumns(): TableColumnSpec[] {
   ];
 }
 
-function normalizeLiteraturePromptFieldKeys(promptFieldKeys: ReviewPromptFieldKey[]) {
+function normalizeLiteraturePromptFieldKeys(
+  promptFieldKeys: ReviewPromptFieldKey[],
+) {
   const supported: ReviewPromptFieldKey[] = [
     "title",
     "authors",
@@ -1739,7 +1749,12 @@ function buildLiteratureFieldColumn(
         label: "关键发现",
         maxWidth: 360,
         renderCell: (ctx, row) =>
-          formatLiteratureCellText(ctx, (row.keyFindings || []).join("；"), 110, 360),
+          formatLiteratureCellText(
+            ctx,
+            (row.keyFindings || []).join("；"),
+            110,
+            360,
+          ),
       };
     case "classificationTags":
       return {
@@ -1747,7 +1762,12 @@ function buildLiteratureFieldColumn(
         label: "标签",
         maxWidth: 260,
         renderCell: (ctx, row) =>
-          formatLiteratureCellText(ctx, row.classificationTags.join(", "), 72, 260),
+          formatLiteratureCellText(
+            ctx,
+            row.classificationTags.join(", "),
+            72,
+            260,
+          ),
       };
     case "pdfAnnotationNotesText":
       return {
@@ -2295,7 +2315,10 @@ function appendCell(
   td.style.verticalAlign = "top";
   td.style.textAlign = options.align || "left";
   const maxWidth = Math.max(56, Number(options.maxWidth) || 280);
-  const fixedWidth = Math.max(56, Math.floor(Number(options.width) || maxWidth));
+  const fixedWidth = Math.max(
+    56,
+    Math.floor(Number(options.width) || maxWidth),
+  );
   td.style.width = `${fixedWidth}px`;
   td.style.minWidth = `${fixedWidth}px`;
   td.style.boxSizing = "border-box";
@@ -2330,14 +2353,22 @@ function createButton(doc: Document, label: string) {
   btn.style.transition =
     "background-color 120ms ease, border-color 120ms ease, color 120ms ease";
   btn.addEventListener("mouseenter", () => {
-    if (btn.disabled || btn.dataset.segmented === "1" || btn.dataset.active === "1") {
+    if (
+      btn.disabled ||
+      btn.dataset.segmented === "1" ||
+      btn.dataset.active === "1"
+    ) {
       return;
     }
     btn.style.background = "#f8fafc";
     btn.style.borderColor = "#94a3b8";
   });
   btn.addEventListener("mouseleave", () => {
-    if (btn.disabled || btn.dataset.segmented === "1" || btn.dataset.active === "1") {
+    if (
+      btn.disabled ||
+      btn.dataset.segmented === "1" ||
+      btn.dataset.active === "1"
+    ) {
       return;
     }
     btn.style.background = "#fff";
@@ -2427,7 +2458,11 @@ function truncateAdaptive(text: string, baseLimit: number, maxWidth: number) {
   const longTokenFactor = /\S{28,}/.test(input) ? 0.95 : 1;
 
   const adaptiveLimit = Math.round(
-    normalizedBase * widthFactor * scriptFactor * spacingFactor * longTokenFactor,
+    normalizedBase *
+      widthFactor *
+      scriptFactor *
+      spacingFactor *
+      longTokenFactor,
   );
   const minLimit = Math.max(
     TABLE_TRUNCATE_MIN_SENTENCE_LENGTH,
@@ -2446,7 +2481,11 @@ function truncateAdaptive(text: string, baseLimit: number, maxWidth: number) {
   return truncate(input, finalLimit);
 }
 
-function expandToSentenceBoundary(text: string, limit: number, windowSize: number) {
+function expandToSentenceBoundary(
+  text: string,
+  limit: number,
+  windowSize: number,
+) {
   const input = String(text || "");
   if (input.length <= limit) return input.length;
 
