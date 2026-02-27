@@ -4,12 +4,13 @@ import {
   ReviewFolderRow,
   ReviewListFilters,
   ReviewRecordRow,
+  ReviewRecordType,
 } from "./reviewTypes";
 
 const DEFAULT_FOLDER_NAME = "未分类";
 const PROTECTED_FOLDER_NAMES = new Set([DEFAULT_FOLDER_NAME]);
 const STORE_FILE_NAME = `${config.addonRef}-review-store.json`;
-const STORE_SCHEMA_VERSION = 1;
+const STORE_SCHEMA_VERSION = 2;
 
 type StoreEventName = string;
 
@@ -23,6 +24,7 @@ interface JSONStoreFolder {
 interface JSONStoreRecord {
   id: number;
   zoteroItemID: number;
+  recordType: ReviewRecordType;
   title: string;
   authors: string;
   journal: string;
@@ -38,6 +40,8 @@ interface JSONStoreRecord {
   aiProvider: string;
   aiModel: string;
   rawAIResponse: string;
+  sourceRecordIDs: number[];
+  sourceZoteroItemIDs: number[];
   createdAt: string;
   updatedAt: string;
 }
@@ -258,12 +262,15 @@ export async function upsertReviewRecord(
     const store = await loadStoreData();
     ensureStoreIntegrity(store);
     const existing = store.records.find(
-      (record) => record.zoteroItemID === Number(draft.zoteroItemID),
+      (record) =>
+        record.recordType !== "folderSummary" &&
+        record.zoteroItemID === Number(draft.zoteroItemID),
     );
     const timestamp = nowISO();
     let record: JSONStoreRecord;
     if (existing) {
       record = existing;
+      record.recordType = "literature";
       record.title = String(draft.title || "");
       record.authors = String(draft.authors || "");
       record.journal = String(draft.journal || "");
@@ -283,11 +290,14 @@ export async function upsertReviewRecord(
       record.aiProvider = String(draft.aiProvider || "");
       record.aiModel = String(draft.aiModel || "");
       record.rawAIResponse = String(draft.rawAIResponse || "");
+      record.sourceRecordIDs = [];
+      record.sourceZoteroItemIDs = [];
       record.updatedAt = timestamp;
     } else {
       record = {
         id: allocateID(store, "record"),
         zoteroItemID: Number(draft.zoteroItemID),
+        recordType: "literature",
         title: String(draft.title || ""),
         authors: String(draft.authors || ""),
         journal: String(draft.journal || ""),
@@ -303,6 +313,8 @@ export async function upsertReviewRecord(
         aiProvider: String(draft.aiProvider || ""),
         aiModel: String(draft.aiModel || ""),
         rawAIResponse: String(draft.rawAIResponse || ""),
+        sourceRecordIDs: [],
+        sourceZoteroItemIDs: [],
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -321,6 +333,65 @@ export async function upsertReviewRecord(
   });
 }
 
+export async function createFolderSummaryRecord(input: {
+  folderID?: number | null;
+  folderName: string;
+  summaryText: string;
+  sourceRows: Array<Pick<ReviewRecordRow, "id" | "zoteroItemID">>;
+  aiProvider: string;
+  aiModel: string;
+}): Promise<ReviewRecordRow> {
+  return withStoreOp(async () => {
+    const store = await loadStoreData();
+    ensureStoreIntegrity(store);
+
+    const timestamp = nowISO();
+    const normalizedFolderName =
+      String(input.folderName || "").trim() || "未命名文件夹";
+    const sourceRecordIDs = normalizeIDList(
+      input.sourceRows.map((row) => Number(row.id)),
+    );
+    const sourceZoteroItemIDs = normalizePositiveIntegerList(
+      input.sourceRows.map((row) => Number(row.zoteroItemID)),
+    );
+    const publicationDate = timestamp.slice(0, 10);
+
+    const record: JSONStoreRecord = {
+      id: allocateID(store, "record"),
+      zoteroItemID: 0,
+      recordType: "folderSummary",
+      title: `合并综述：${normalizedFolderName}（${publicationDate}）`,
+      authors: `基于 ${sourceRecordIDs.length} 篇文献`,
+      journal: "文件夹合并综述",
+      publicationDate,
+      abstractText: "",
+      pdfAnnotationNotesText: "",
+      researchBackground: "",
+      literatureReview: String(input.summaryText || "").trim(),
+      researchMethods: "",
+      researchConclusions: "",
+      keyFindings: [],
+      classificationTags: normalizeStringArray(["合并综述", normalizedFolderName]),
+      aiProvider: String(input.aiProvider || ""),
+      aiModel: String(input.aiModel || ""),
+      rawAIResponse: String(input.summaryText || "").trim(),
+      sourceRecordIDs,
+      sourceZoteroItemIDs,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    store.records.push(record);
+
+    const actualFolderID = resolveTargetFolderID(store, input.folderID ?? null);
+    addRecordFolderLink(store, record.id, actualFolderID, timestamp);
+
+    normalizeRecordFolderMemberships(store, [record.id]);
+    markStoreUpdated(store);
+    await saveStoreData(store);
+    return mapRecordWithFolders(store, record, { includeRawAIResponse: true });
+  });
+}
+
 export async function getReviewRecordByItemID(
   zoteroItemID: number,
 ): Promise<ReviewRecordRow | null> {
@@ -328,7 +399,9 @@ export async function getReviewRecordByItemID(
     const store = await loadStoreData();
     ensureStoreIntegrity(store);
     const record = store.records.find(
-      (row) => row.zoteroItemID === Number(zoteroItemID),
+      (row) =>
+        row.recordType !== "folderSummary" &&
+        row.zoteroItemID === Number(zoteroItemID),
     );
     if (!record) return null;
     return mapRecordWithFolders(store, record, { includeRawAIResponse: true });
@@ -421,6 +494,63 @@ export async function removeReviewRecordsFromFolder(
   });
 }
 
+export async function deleteReviewRecords(recordIDs: number[]): Promise<number> {
+  return withStoreOp(async () => {
+    const store = await loadStoreData();
+    ensureStoreIntegrity(store);
+    const ids = normalizeIDList(recordIDs);
+    if (!ids.length) return 0;
+
+    const existingIDs = new Set(store.records.map((record) => record.id));
+    const effectiveIDs = ids.filter((id) => existingIDs.has(id));
+    if (!effectiveIDs.length) return 0;
+
+    const effectiveIDSet = new Set(effectiveIDs);
+    const removedZoteroItemIDs = new Set<number>();
+    for (const record of store.records) {
+      if (!effectiveIDSet.has(record.id)) continue;
+      if (record.zoteroItemID > 0) {
+        removedZoteroItemIDs.add(record.zoteroItemID);
+      }
+    }
+
+    const timestamp = nowISO();
+    store.records = store.records.filter((record) => !effectiveIDSet.has(record.id));
+    store.recordFolderLinks = store.recordFolderLinks.filter(
+      (link) => !effectiveIDSet.has(link.recordID),
+    );
+
+    for (const record of store.records) {
+      const prevSourceRecordIDs = Array.isArray(record.sourceRecordIDs)
+        ? record.sourceRecordIDs
+        : [];
+      const nextSourceRecordIDs = prevSourceRecordIDs.filter(
+        (id) => !effectiveIDSet.has(Number(id)),
+      );
+
+      const prevSourceItemIDs = Array.isArray(record.sourceZoteroItemIDs)
+        ? record.sourceZoteroItemIDs
+        : [];
+      const nextSourceItemIDs = prevSourceItemIDs.filter(
+        (id) => !removedZoteroItemIDs.has(Number(id)),
+      );
+
+      if (
+        nextSourceRecordIDs.length !== prevSourceRecordIDs.length ||
+        nextSourceItemIDs.length !== prevSourceItemIDs.length
+      ) {
+        record.sourceRecordIDs = nextSourceRecordIDs;
+        record.sourceZoteroItemIDs = nextSourceItemIDs;
+        record.updatedAt = timestamp;
+      }
+    }
+
+    markStoreUpdated(store);
+    await saveStoreData(store);
+    return effectiveIDs.length;
+  });
+}
+
 export async function updateReviewRecordRawResponse(
   recordID: number,
   rawAIResponse: string,
@@ -430,7 +560,12 @@ export async function updateReviewRecordRawResponse(
     ensureStoreIntegrity(store);
     const record = store.records.find((row) => row.id === Number(recordID));
     if (!record) return null;
-    record.rawAIResponse = String(rawAIResponse || "");
+    const nextRaw = String(rawAIResponse || "");
+    record.rawAIResponse = nextRaw;
+    // Keep folder-summary body in sync with editable raw content.
+    if (record.recordType === "folderSummary") {
+      record.literatureReview = nextRaw;
+    }
     record.updatedAt = nowISO();
     markStoreUpdated(store);
     await saveStoreData(store);
@@ -442,9 +577,22 @@ export async function exportReviewRecordsAsCSV(
   filters: ReviewListFilters = {},
 ): Promise<string> {
   const rows = await listReviewRecords(filters);
+  const csvRows =
+    filters.recordType === "folderSummary"
+      ? buildFolderSummaryCSVRows(rows)
+      : buildLiteratureCSVRows(rows);
+  return (
+    "\uFEFF" + csvRows.map((cols) => cols.map(csvEscape).join(",")).join("\n")
+  );
+}
+
+function buildLiteratureCSVRows(rows: ReviewRecordRow[]) {
   const headers = [
     "记录ID",
+    "记录类型",
     "Zotero条目ID",
+    "来源记录ID",
+    "来源条目ID",
     "文件夹",
     "标题",
     "作者",
@@ -466,7 +614,10 @@ export async function exportReviewRecordsAsCSV(
   for (const row of rows) {
     csvRows.push([
       String(row.id),
+      String(row.recordType || "literature"),
       String(row.zoteroItemID),
+      (row.sourceRecordIDs || []).map((v) => String(v)).join("; "),
+      (row.sourceZoteroItemIDs || []).map((v) => String(v)).join("; "),
       row.folderNames.join("; "),
       row.title,
       row.authors,
@@ -485,9 +636,42 @@ export async function exportReviewRecordsAsCSV(
       row.updatedAt,
     ]);
   }
-  return (
-    "\uFEFF" + csvRows.map((cols) => cols.map(csvEscape).join(",")).join("\n")
-  );
+  return csvRows;
+}
+
+function buildFolderSummaryCSVRows(rows: ReviewRecordRow[]) {
+  const headers = [
+    "记录ID",
+    "记录类型",
+    "标题",
+    "文件夹",
+    "来源文献数",
+    "来源文献记录ID",
+    "来源Zotero条目ID",
+    "合并综述内容",
+    "AI供应商",
+    "AI模型",
+    "创建时间",
+    "更新时间",
+  ];
+  const csvRows = [headers];
+  for (const row of rows) {
+    csvRows.push([
+      String(row.id),
+      String(row.recordType || "folderSummary"),
+      row.title,
+      row.folderNames.join("; "),
+      String((row.sourceRecordIDs || []).length),
+      (row.sourceRecordIDs || []).map((v) => String(v)).join("; "),
+      (row.sourceZoteroItemIDs || []).map((v) => String(v)).join("; "),
+      row.literatureReview || row.rawAIResponse || "",
+      row.aiProvider,
+      row.aiModel,
+      row.createdAt,
+      row.updatedAt,
+    ]);
+  }
+  return csvRows;
 }
 
 async function withStoreOp<T>(fn: () => Promise<T>): Promise<T> {
@@ -764,6 +948,11 @@ function applyRecordFilters(
 ) {
   let rows = [...records];
 
+  const recordTypeFilter = filters.recordType || "all";
+  if (recordTypeFilter !== "all") {
+    rows = rows.filter((row) => row.recordType === recordTypeFilter);
+  }
+
   if (typeof filters.folderID === "number") {
     const targetFolderID = Number(filters.folderID);
     const allowed = new Set(
@@ -793,6 +982,9 @@ function applyRecordFilters(
         row.researchConclusions,
         row.keyFindings.join(","),
         row.classificationTags.join(","),
+        row.recordType,
+        row.sourceRecordIDs.join(","),
+        row.sourceZoteroItemIDs.join(","),
         (folderNamesByRecord.get(row.id) || []).join(","),
       ]
         .join("\n")
@@ -880,6 +1072,7 @@ function mapRecordWithFolders(
   return {
     id: record.id,
     zoteroItemID: record.zoteroItemID,
+    recordType: record.recordType,
     folderID: folderIDs[0] ?? null,
     folderName: folderNames[0] ?? null,
     folderIDs,
@@ -896,6 +1089,8 @@ function mapRecordWithFolders(
     researchConclusions: record.researchConclusions,
     keyFindings: [...record.keyFindings],
     classificationTags: [...record.classificationTags],
+    sourceRecordIDs: [...record.sourceRecordIDs],
+    sourceZoteroItemIDs: [...record.sourceZoteroItemIDs],
     aiProvider: record.aiProvider,
     aiModel: record.aiModel,
     rawAIResponse: options.includeRawAIResponse ? record.rawAIResponse : "",
@@ -976,18 +1171,15 @@ function normalizeFolderRecord(value: any): JSONStoreFolder | null {
 function normalizeReviewRecord(value: any): JSONStoreRecord | null {
   const id = Number(value?.id);
   const zoteroItemID = Number(value?.zoteroItemID);
-  if (
-    !Number.isFinite(id) ||
-    id <= 0 ||
-    !Number.isFinite(zoteroItemID) ||
-    zoteroItemID <= 0
-  ) {
+  if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(zoteroItemID)) {
     return null;
   }
   const timestamp = nowISO();
+  const normalizedRecordType = normalizeRecordType(value?.recordType);
   return {
     id,
     zoteroItemID,
+    recordType: normalizedRecordType,
     title: String(value?.title || ""),
     authors: String(value?.authors || ""),
     journal: String(value?.journal || ""),
@@ -1003,6 +1195,10 @@ function normalizeReviewRecord(value: any): JSONStoreRecord | null {
     aiProvider: String(value?.aiProvider || ""),
     aiModel: String(value?.aiModel || ""),
     rawAIResponse: String(value?.rawAIResponse || ""),
+    sourceRecordIDs: normalizeIDList(value?.sourceRecordIDs || []),
+    sourceZoteroItemIDs: normalizePositiveIntegerList(
+      value?.sourceZoteroItemIDs || [],
+    ),
     createdAt: String(value?.createdAt || timestamp),
     updatedAt: String(value?.updatedAt || value?.createdAt || timestamp),
   };
@@ -1044,16 +1240,35 @@ function normalizeStringArray(value: unknown) {
     .slice(0, 200);
 }
 
+function normalizeRecordType(value: unknown): ReviewRecordType {
+  return String(value || "").trim() === "folderSummary"
+    ? "folderSummary"
+    : "literature";
+}
+
 function normalizeFolderName(name: unknown) {
   return String(name || "")
     .trim()
     .slice(0, 100);
 }
 
-function normalizeIDList(ids: unknown[]) {
+function normalizeIDList(ids: unknown) {
+  const list = Array.isArray(ids) ? ids : [];
   return Array.from(
     new Set(
-      (ids || [])
+      list
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v) && v > 0)
+        .map((v) => Math.floor(v)),
+    ),
+  );
+}
+
+function normalizePositiveIntegerList(ids: unknown) {
+  const list = Array.isArray(ids) ? ids : [];
+  return Array.from(
+    new Set(
+      list
         .map((v) => Number(v))
         .filter((v) => Number.isFinite(v) && v > 0)
         .map((v) => Math.floor(v)),

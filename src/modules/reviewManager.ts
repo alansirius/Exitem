@@ -1,11 +1,18 @@
 import { config } from "../../package.json";
-import { getReviewErrorMessage, synthesizeFolderReview } from "./reviewAI";
-import type { ReviewExtractionProgress } from "./reviewAI";
+import {
+  getReviewErrorMessage,
+  parseReviewPromptFieldKeys,
+  synthesizeFolderReview,
+} from "./reviewAI";
+import type { ReviewExtractionProgress, ReviewPromptFieldKey } from "./reviewAI";
+import { getReviewSettings } from "./reviewConfig";
 import {
   assignReviewRecordsFolder,
   countReviewRecords,
+  createFolderSummaryRecord,
   createReviewFolder,
   deleteReviewFolder,
+  deleteReviewRecords,
   exportReviewRecordsAsCSV,
   getReviewRecordByID,
   listReviewFolders,
@@ -21,8 +28,19 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 const REVIEW_MANAGER_ROOT_ID = `${config.addonRef}-review-manager-root`;
 const REVIEW_TAB_TYPE = `${config.addonRef}-review-manager-tab`;
 const MANAGER_PAGE_SIZE = 100;
+const REVIEW_DIALOG_DEFAULT_WIDTH = 1200;
+const REVIEW_DIALOG_DEFAULT_HEIGHT = 860;
+const DEFAULT_TABLE_MIN_WIDTH = 960;
+const COMPACT_TABLE_MIN_WIDTH = 560;
+const TABLE_TRUNCATE_BASE_WIDTH = 280;
+const TABLE_TRUNCATE_MIN_FACTOR = 1.05;
+const TABLE_TRUNCATE_MAX_FACTOR = 3.6;
+const TABLE_TRUNCATE_MIN_SENTENCE_LENGTH = 26;
+const TABLE_TRUNCATE_BOUNDARY_WINDOW = 28;
 
 interface ManagerState {
+  viewMode: ReviewRecordRow["recordType"];
+  literaturePromptFieldKeys: ReviewPromptFieldKey[];
   search: string;
   sortKey: "updatedAt" | "title" | "publicationDate" | "journal";
   sortDir: "asc" | "desc";
@@ -42,6 +60,8 @@ interface ManagerRefs {
   root: HTMLDivElement;
   statusText: HTMLDivElement;
   folderList: HTMLDivElement;
+  viewLiteratureBtn: HTMLButtonElement;
+  viewSummaryBtn: HTMLButtonElement;
   searchInput: HTMLInputElement;
   sortKeyBtn: HTMLButtonElement;
   sortDirBtn: HTMLButtonElement;
@@ -49,6 +69,8 @@ interface ManagerRefs {
   pagePrevBtn: HTMLButtonElement;
   pageNextBtn: HTMLButtonElement;
   pageInfoText: HTMLSpanElement;
+  table: HTMLTableElement;
+  tableHeadRow: HTMLTableRowElement;
   tableBody: HTMLTableSectionElement;
   preview: HTMLTextAreaElement;
   selectionText: HTMLSpanElement;
@@ -60,6 +82,18 @@ interface ManagerContext {
   state: ManagerState;
   tabID?: string;
   refs?: ManagerRefs;
+}
+
+interface TableColumnSpec {
+  key: string;
+  label: string;
+  align?: "left" | "center" | "right";
+  maxWidth?: number;
+  renderCell: (
+    ctx: ManagerContext,
+    row: ReviewRecordRow,
+    rowIndex: number,
+  ) => string | Node;
 }
 
 let managerContext: ManagerContext | null = null;
@@ -76,6 +110,8 @@ export async function openReviewManagerWindow(preferredWin?: Window) {
     mode: "tab",
     helper: null,
     state: {
+      viewMode: "literature",
+      literaturePromptFieldKeys: [],
       search: "",
       sortKey: "updatedAt",
       sortDir: "desc",
@@ -106,6 +142,13 @@ export async function openReviewManagerWindow(preferredWin?: Window) {
     timestamp: new Date().toISOString(),
     source: "review-manager",
   }).catch((e) => ztoolkit.log(e));
+}
+
+export async function refreshReviewManagerIfOpen() {
+  const ctx = managerContext;
+  if (!ctx || !isManagerContextAlive(ctx)) return false;
+  await refreshAndRender(ctx);
+  return true;
 }
 
 export function closeReviewManagerWindow() {
@@ -203,6 +246,17 @@ async function openReviewManagerInTab(ctx: ManagerContext, win: Window) {
 }
 
 function prepareTabContainer(doc: Document, container: Element) {
+  const host = container as HTMLElement;
+  if (host?.style) {
+    host.style.width = "100%";
+    host.style.maxWidth = "100%";
+    host.style.height = "100%";
+    host.style.maxHeight = "100%";
+    host.style.overflow = "hidden";
+    host.style.minWidth = "0";
+    host.style.minHeight = "0";
+    host.style.boxSizing = "border-box";
+  }
   while (container.firstChild) {
     container.removeChild(container.firstChild);
   }
@@ -210,7 +264,12 @@ function prepareTabContainer(doc: Document, container: Element) {
   root.id = REVIEW_MANAGER_ROOT_ID;
   Object.assign(root.style, {
     width: "100%",
+    maxWidth: "100%",
     height: "100%",
+    maxHeight: "100%",
+    minWidth: "0",
+    minHeight: "0",
+    overflow: "hidden",
     boxSizing: "border-box",
   });
   container.appendChild(root);
@@ -226,6 +285,7 @@ function openReviewManagerInDialog(ctx: ManagerContext) {
           return;
         }
         try {
+          setupReviewManagerDialogWindow(ctx.helper.window as Window);
           mountManagerUI(ctx);
           void refreshAndRender(ctx);
         } catch (e) {
@@ -250,10 +310,13 @@ function openReviewManagerInDialog(ctx: ManagerContext) {
       namespace: "html",
       id: REVIEW_MANAGER_ROOT_ID,
       styles: {
-        width: "1200px",
-        height: "760px",
-        minWidth: "960px",
-        minHeight: "640px",
+        width: `${REVIEW_DIALOG_DEFAULT_WIDTH - 48}px`,
+        minWidth: `${REVIEW_DIALOG_DEFAULT_WIDTH - 48}px`,
+        maxWidth: `${REVIEW_DIALOG_DEFAULT_WIDTH - 48}px`,
+        height: `${REVIEW_DIALOG_DEFAULT_HEIGHT - 120}px`,
+        minHeight: `${REVIEW_DIALOG_DEFAULT_HEIGHT - 120}px`,
+        maxHeight: `${REVIEW_DIALOG_DEFAULT_HEIGHT - 120}px`,
+        overflow: "hidden",
         boxSizing: "border-box",
       },
     })
@@ -270,6 +333,34 @@ function openReviewManagerInDialog(ctx: ManagerContext) {
   }
 }
 
+function setupReviewManagerDialogWindow(win: Window) {
+  try {
+    const root = win.document.documentElement;
+    root?.setAttribute("width", String(REVIEW_DIALOG_DEFAULT_WIDTH));
+    root?.setAttribute("height", String(REVIEW_DIALOG_DEFAULT_HEIGHT));
+    root?.setAttribute("minwidth", String(REVIEW_DIALOG_DEFAULT_WIDTH));
+    root?.setAttribute("minheight", String(REVIEW_DIALOG_DEFAULT_HEIGHT));
+    root?.setAttribute("maxwidth", String(REVIEW_DIALOG_DEFAULT_WIDTH));
+    root?.setAttribute("maxheight", String(REVIEW_DIALOG_DEFAULT_HEIGHT));
+    root?.setAttribute("resizable", "false");
+    root?.setAttribute("sizetocontent", "false");
+    const body = win.document.body as HTMLElement | null;
+    if (body?.style) {
+      body.style.width = "100%";
+      body.style.maxWidth = "100%";
+      body.style.minWidth = "0";
+      body.style.height = "100%";
+      body.style.maxHeight = "100%";
+      body.style.overflow = "hidden";
+      body.style.boxSizing = "border-box";
+      body.style.margin = "0";
+    }
+    win.resizeTo(REVIEW_DIALOG_DEFAULT_WIDTH, REVIEW_DIALOG_DEFAULT_HEIGHT);
+  } catch {
+    // ignore
+  }
+}
+
 async function refreshAndRender(ctx: ManagerContext) {
   await refreshManagerData(ctx);
   renderManager(ctx);
@@ -277,14 +368,20 @@ async function refreshAndRender(ctx: ManagerContext) {
 
 async function refreshManagerData(ctx: ManagerContext) {
   const { state } = ctx;
+  const settings = getReviewSettings();
+  state.literaturePromptFieldKeys = parseReviewPromptFieldKeys(
+    settings.customPromptTemplate,
+  );
   state.folders = await listReviewFolders();
   state.totalRows = await countReviewRecords({
+    recordType: state.viewMode,
     search: state.search,
     folderID: state.folderFilterID,
   });
   const totalPages = getTotalPages(state.totalRows, state.pageSize);
   state.page = Math.min(Math.max(1, state.page), totalPages);
   state.rows = await listReviewRecords({
+    recordType: state.viewMode,
     search: state.search,
     folderID: state.folderFilterID,
     sortKey: state.sortKey,
@@ -331,12 +428,36 @@ function mountManagerUI(ctx: ManagerContext) {
   }
 
   root.innerHTML = "";
+  if (ctx.mode === "dialog") {
+    const contentWidth = Math.max(760, REVIEW_DIALOG_DEFAULT_WIDTH - 48);
+    const contentHeight = Math.max(560, REVIEW_DIALOG_DEFAULT_HEIGHT - 120);
+    root.style.width = `${contentWidth}px`;
+    root.style.minWidth = `${contentWidth}px`;
+    root.style.maxWidth = `${contentWidth}px`;
+    root.style.height = `${contentHeight}px`;
+    root.style.minHeight = `${contentHeight}px`;
+    root.style.maxHeight = `${contentHeight}px`;
+    root.style.overflow = "hidden";
+  } else {
+    root.style.width = "100%";
+    root.style.maxWidth = "100%";
+    root.style.height = "100%";
+    root.style.maxHeight = "100%";
+    root.style.minWidth = "";
+    root.style.minHeight = "";
+    root.style.maxWidth = "100%";
+    root.style.maxHeight = "100%";
+    root.style.overflow = "hidden";
+  }
+  root.style.boxSizing = "border-box";
   root.style.display = "flex";
   root.style.flexDirection = "column";
-  root.style.gap = "8px";
-  root.style.padding = "10px";
+  root.style.gap = "10px";
+  root.style.padding = "12px";
+  root.style.overflow = "hidden";
   root.style.fontFamily =
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  root.style.background = "#f8fafc";
 
   const titleRow = createEl(doc, "div", {
     style: {
@@ -344,6 +465,10 @@ function mountManagerUI(ctx: ManagerContext) {
       alignItems: "center",
       justifyContent: "space-between",
       gap: "8px",
+      padding: "8px 10px",
+      border: "1px solid #e2e8f0",
+      borderRadius: "8px",
+      background: "#ffffff",
     },
   });
 
@@ -360,7 +485,12 @@ function mountManagerUI(ctx: ManagerContext) {
     text: "加载中...",
     style: {
       fontSize: "12px",
-      color: "#4b5563",
+      color: "#475569",
+      background: "#f1f5f9",
+      border: "1px solid #e2e8f0",
+      borderRadius: "999px",
+      padding: "2px 10px",
+      whiteSpace: "nowrap",
     },
   });
   titleRow.append(titleText, statusText);
@@ -371,6 +501,10 @@ function mountManagerUI(ctx: ManagerContext) {
       flexWrap: "wrap",
       gap: "8px",
       alignItems: "center",
+      border: "1px solid #e2e8f0",
+      borderRadius: "8px",
+      background: "#ffffff",
+      padding: "8px",
     },
   });
 
@@ -383,22 +517,29 @@ function mountManagerUI(ctx: ManagerContext) {
       flex: "1 1 320px",
       minWidth: "240px",
       height: "28px",
-      border: "1px solid #d1d5db",
-      borderRadius: "4px",
-      padding: "0 8px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "6px",
+      padding: "0 10px",
       fontSize: "12px",
       boxSizing: "border-box",
+      background: "#f8fafc",
     },
   }) as HTMLInputElement;
 
+  const viewLiteratureBtn = createButton(doc, "文献记录");
+  const viewSummaryBtn = createButton(doc, "合并综述");
   const sortKeyBtn = createButton(doc, "排序：更新时间");
   const sortDirBtn = createButton(doc, "降序");
   const filterStatusText = createEl(doc, "span", {
     text: "筛选：全部文件夹",
     style: {
       fontSize: "12px",
-      color: "#4b5563",
+      color: "#334155",
       whiteSpace: "nowrap",
+      background: "#eef2ff",
+      border: "1px solid #dbeafe",
+      borderRadius: "999px",
+      padding: "2px 10px",
     },
   }) as HTMLSpanElement;
   const pagePrevBtn = createButton(doc, "上一页");
@@ -407,8 +548,12 @@ function mountManagerUI(ctx: ManagerContext) {
     text: "第 1/1 页",
     style: {
       fontSize: "12px",
-      color: "#4b5563",
+      color: "#334155",
       whiteSpace: "nowrap",
+      background: "#f1f5f9",
+      border: "1px solid #e2e8f0",
+      borderRadius: "999px",
+      padding: "2px 10px",
     },
   }) as HTMLSpanElement;
 
@@ -428,6 +573,10 @@ function mountManagerUI(ctx: ManagerContext) {
       gap: "8px",
       flexWrap: "wrap",
       alignItems: "center",
+      border: "1px solid #e2e8f0",
+      borderRadius: "8px",
+      background: "#ffffff",
+      padding: "8px",
     },
   });
 
@@ -438,14 +587,38 @@ function mountManagerUI(ctx: ManagerContext) {
   const btnFolderSummary = createButton(doc, "合并综述");
   const btnMoveSelected = createButton(doc, "加入文件夹");
   const btnRemoveSelected = createButton(doc, "移出文件夹");
+  const btnDeleteSelected = createButton(doc, "删除记录");
   const btnSelectAll = createButton(doc, "全选");
   const btnClearSelection = createButton(doc, "清空选择");
   const btnOpenItem = createButton(doc, "定位条目");
   const btnPreviewRaw = createButton(doc, "查看原始记录");
   const btnExport = createButton(doc, "导出表格");
+  const actionDividerA = createEl(doc, "span", {
+    style: {
+      width: "1px",
+      height: "20px",
+      background: "#e2e8f0",
+      margin: "0 2px",
+    },
+  });
+  const actionDividerB = createEl(doc, "span", {
+    style: {
+      width: "1px",
+      height: "20px",
+      background: "#e2e8f0",
+      margin: "0 2px",
+    },
+  });
   const selectionText = createEl(doc, "span", {
     text: "未选择",
-    style: { fontSize: "12px", color: "#4b5563" },
+    style: {
+      fontSize: "12px",
+      color: "#334155",
+      background: "#f1f5f9",
+      border: "1px solid #e2e8f0",
+      borderRadius: "999px",
+      padding: "2px 10px",
+    },
   });
 
   actionBar.append(
@@ -454,10 +627,13 @@ function mountManagerUI(ctx: ManagerContext) {
     btnDeleteFolder,
     btnMergeFolder,
     btnFolderSummary,
+    actionDividerA,
     btnMoveSelected,
     btnRemoveSelected,
+    btnDeleteSelected,
     btnSelectAll,
     btnClearSelection,
+    actionDividerB,
     btnOpenItem,
     btnPreviewRaw,
     btnExport,
@@ -467,23 +643,28 @@ function mountManagerUI(ctx: ManagerContext) {
   const content = createEl(doc, "div", {
     style: {
       display: "grid",
-      gridTemplateColumns: "240px 1fr",
+      gridTemplateColumns: "240px minmax(0, 1fr)",
       gap: "8px",
       flex: "1",
+      width: "100%",
+      maxWidth: "100%",
+      minWidth: "0",
       minHeight: "0",
+      overflow: "hidden",
     },
   });
 
   const leftPane = createEl(doc, "div", {
     style: {
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
-      padding: "8px",
+      border: "1px solid #dbe3ef",
+      borderRadius: "8px",
+      padding: "10px",
       display: "flex",
       flexDirection: "column",
       gap: "6px",
       minHeight: "0",
-      background: "#f9fafb",
+      background: "#ffffff",
+      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
     },
   });
   leftPane.append(
@@ -492,6 +673,7 @@ function mountManagerUI(ctx: ManagerContext) {
       style: { fontSize: "12px", fontWeight: "600", color: "#111827" },
     }),
   );
+
   const folderList = createEl(doc, "div", {
     attrs: {},
     style: {
@@ -510,73 +692,131 @@ function mountManagerUI(ctx: ManagerContext) {
   const rightPane = createEl(doc, "div", {
     style: {
       display: "grid",
-      gridTemplateRows: "1fr 180px",
+      gridTemplateRows: "minmax(0, 1fr) 180px",
       gap: "8px",
+      width: "100%",
+      minWidth: "0",
+      maxWidth: "100%",
       minHeight: "0",
+      overflow: "hidden",
     },
   });
 
   const tableWrap = createEl(doc, "div", {
     style: {
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
-      overflow: "auto",
+      border: "1px solid #dbe3ef",
+      borderRadius: "8px",
+      overflow: "hidden",
       background: "#fff",
+      width: "100%",
+      minWidth: "0",
+      maxWidth: "100%",
       minHeight: "0",
+      display: "grid",
+      gridTemplateRows: "auto minmax(0, 1fr)",
+      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+    },
+  });
+
+  const tableToolbar = createEl(doc, "div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr auto 1fr",
+      alignItems: "center",
+      gap: "8px",
+      padding: "10px",
+      borderBottom: "1px solid #e2e8f0",
+      background: "#f8fafc",
+    },
+  });
+  const viewSwitchWrap = createEl(doc, "div", {
+    style: {
+      display: "inline-flex",
+      border: "1px solid #cbd5e1",
+      borderRadius: "6px",
+      overflow: "hidden",
+      background: "#fff",
+    },
+  });
+  viewLiteratureBtn.style.border = "none";
+  viewLiteratureBtn.style.borderRight = "1px solid #d1d5db";
+  viewLiteratureBtn.style.borderRadius = "0";
+  viewLiteratureBtn.dataset.segmented = "1";
+  viewSummaryBtn.style.border = "none";
+  viewSummaryBtn.style.borderRadius = "0";
+  viewSummaryBtn.dataset.segmented = "1";
+  viewSwitchWrap.append(viewLiteratureBtn, viewSummaryBtn);
+  const toolbarLeftSpacer = createEl(doc, "div", {
+    style: {
+      minWidth: "0",
+    },
+  });
+  const switchControlCenter = createEl(doc, "div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: "0",
+    },
+  });
+  switchControlCenter.append(viewSwitchWrap);
+  const toolbarRightSpacer = createEl(doc, "div", {
+    style: {
+      minWidth: "0",
+    },
+  });
+  tableToolbar.append(toolbarLeftSpacer, switchControlCenter, toolbarRightSpacer);
+
+  const tableScrollWrap = createEl(doc, "div", {
+    style: {
+      overflowX: "scroll",
+      overflowY: "auto",
+      width: "100%",
+      minWidth: "0",
+      maxWidth: "100%",
+      minHeight: "0",
+      height: "100%",
+      maxHeight: "100%",
+      scrollbarGutter: "stable both-edges",
+      overscrollBehavior: "contain",
     },
   });
 
   const table = createEl(doc, "table", {
     style: {
       width: "100%",
+      maxWidth: "100%",
       borderCollapse: "collapse",
       fontSize: "12px",
+      tableLayout: "fixed",
     },
   }) as HTMLTableElement;
 
   const thead = createEl(doc, "thead") as HTMLTableSectionElement;
   const headRow = createEl(doc, "tr") as HTMLTableRowElement;
-  [
-    "选中",
-    "标题",
-    "作者",
-    "期刊",
-    "时间",
-    "文件夹",
-    "标签",
-    "更新时间",
-  ].forEach((text, idx) => {
-    const th = createEl(doc, "th", {
-      text,
-      style: {
-        position: "sticky",
-        top: "0",
-        zIndex: "1",
-        background: "#f3f4f6",
-        borderBottom: "1px solid #e5e7eb",
-        textAlign: idx === 0 ? "center" : "left",
-        padding: "6px 8px",
-        whiteSpace: "nowrap",
-      },
-    });
-    headRow.appendChild(th);
-  });
   thead.appendChild(headRow);
 
   const tableBody = createEl(doc, "tbody") as HTMLTableSectionElement;
   table.append(thead, tableBody);
-  tableWrap.appendChild(table);
+  tableScrollWrap.appendChild(table);
+  tableWrap.append(tableToolbar, tableScrollWrap);
 
   const previewWrap = createEl(doc, "div", {
     style: {
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
-      padding: "8px",
+      border: "1px solid #dbe3ef",
+      borderRadius: "8px",
+      padding: "10px",
       display: "grid",
       gridTemplateRows: "auto 1fr",
       gap: "6px",
+      minWidth: "0",
       minHeight: "0",
       background: "#fff",
+      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+      position: "sticky",
+      bottom: "0",
+      zIndex: "2",
+      overflow: "hidden",
     },
   });
   previewWrap.append(
@@ -592,12 +832,14 @@ function mountManagerUI(ctx: ManagerContext) {
       height: "100%",
       minHeight: "130px",
       resize: "vertical",
-      fontSize: "12px",
-      lineHeight: "1.45",
+      fontSize: "13px",
+      lineHeight: "1.6",
       boxSizing: "border-box",
-      border: "1px solid #e5e7eb",
-      borderRadius: "4px",
-      padding: "8px",
+      border: "1px solid #e2e8f0",
+      borderRadius: "6px",
+      padding: "10px",
+      background: "#f8fafc",
+      color: "#1e293b",
     },
   }) as HTMLTextAreaElement;
   previewWrap.append(preview);
@@ -611,6 +853,8 @@ function mountManagerUI(ctx: ManagerContext) {
     root,
     statusText,
     folderList,
+    viewLiteratureBtn,
+    viewSummaryBtn,
     searchInput,
     sortKeyBtn,
     sortDirBtn,
@@ -618,6 +862,8 @@ function mountManagerUI(ctx: ManagerContext) {
     pagePrevBtn,
     pageNextBtn,
     pageInfoText,
+    table,
+    tableHeadRow: headRow,
     tableBody,
     preview,
     selectionText,
@@ -627,6 +873,20 @@ function mountManagerUI(ctx: ManagerContext) {
     ctx.state.search = searchInput.value.trim();
     ctx.state.page = 1;
     void refreshAndRender(ctx);
+  });
+  searchInput.addEventListener("focus", () => {
+    searchInput.style.borderColor = "#93c5fd";
+    searchInput.style.background = "#ffffff";
+  });
+  searchInput.addEventListener("blur", () => {
+    searchInput.style.borderColor = "#cbd5e1";
+    searchInput.style.background = "#f8fafc";
+  });
+  viewLiteratureBtn.addEventListener("click", () => {
+    switchManagerView(ctx, "literature");
+  });
+  viewSummaryBtn.addEventListener("click", () => {
+    switchManagerView(ctx, "folderSummary");
   });
 
   sortKeyBtn.addEventListener("click", () => {
@@ -755,6 +1015,7 @@ function mountManagerUI(ctx: ManagerContext) {
     try {
       const allRows = await listReviewRecords({
         folderID: targetFolder.id,
+        recordType: "literature",
         sortKey: "updatedAt",
         sortDir: "desc",
       });
@@ -788,6 +1049,17 @@ function mountManagerUI(ctx: ManagerContext) {
       const result = await synthesizeFolderReview(targetFolder.name, allRows, {
         onProgress,
       });
+      const savedSummary = await createFolderSummaryRecord({
+        folderID: targetFolder.id,
+        folderName: targetFolder.name,
+        summaryText: result.text,
+        sourceRows: allRows.map((row) => ({
+          id: row.id,
+          zoteroItemID: row.zoteroItemID,
+        })),
+        aiProvider: result.provider,
+        aiModel: result.model,
+      });
       progress.changeLine({
         text: `合并综述完成：${targetFolder.name}`,
         type: "success",
@@ -798,8 +1070,10 @@ function mountManagerUI(ctx: ManagerContext) {
         timestamp: new Date().toISOString(),
         folder_name: targetFolder.name,
         record_count: allRows.length,
+        summary_record_id: savedSummary.id,
         model_type: `${result.provider}:${result.model}`,
       }).catch((e) => ztoolkit.log(e));
+      await refreshAndRender(ctx);
       await openFolderSummaryDialog(
         targetFolder.name,
         result.text,
@@ -901,6 +1175,31 @@ function mountManagerUI(ctx: ManagerContext) {
     }
   });
 
+  btnDeleteSelected.addEventListener("click", async () => {
+    const recordIDs = Array.from(ctx.state.selectedRecordIDs);
+    if (!recordIDs.length) {
+      win.alert("请先在表格中勾选记录");
+      return;
+    }
+    if (!win.confirm(`确认彻底删除所选 ${recordIDs.length} 条记录？该操作不可恢复。`)) {
+      return;
+    }
+    try {
+      const deletedCount = await deleteReviewRecords(recordIDs);
+      await trackReviewEvent("record_delete", {
+        timestamp: new Date().toISOString(),
+        record_count: deletedCount,
+        view_mode: ctx.state.viewMode,
+      }).catch((e) => ztoolkit.log(e));
+      ctx.state.selectedRecordIDs.clear();
+      ctx.state.selectionAnchorRecordID = null;
+      await refreshAndRender(ctx);
+      showManagerToast(`已删除 ${deletedCount} 条记录`);
+    } catch (e: any) {
+      win.alert(`删除记录失败：${e?.message || e}`);
+    }
+  });
+
   btnSelectAll.addEventListener("click", () => {
     ctx.state.selectedRecordIDs = new Set(ctx.state.rows.map((row) => row.id));
     ctx.state.selectionAnchorRecordID = ctx.state.rows[0]?.id ?? null;
@@ -917,6 +1216,10 @@ function mountManagerUI(ctx: ManagerContext) {
     const row = getPrimarySelectedRow(ctx);
     if (!row) {
       win.alert("请先选择一条记录");
+      return;
+    }
+    if (row.recordType === "folderSummary") {
+      win.alert("当前记录为合并综述，不对应单个 Zotero 条目");
       return;
     }
     focusZoteroItem(row.zoteroItemID);
@@ -945,6 +1248,7 @@ function mountManagerUI(ctx: ManagerContext) {
     try {
       const csv = await exportReviewRecordsAsCSV({
         folderID: ctx.state.folderFilterID,
+        recordType: ctx.state.viewMode,
         search: ctx.state.search,
         sortKey: ctx.state.sortKey,
         sortDir: ctx.state.sortDir,
@@ -975,11 +1279,14 @@ function renderManager(ctx: ManagerContext) {
   const refs = ctx.refs;
   if (!refs) return;
   const { state } = ctx;
+  const columns = getCurrentTableColumns(ctx);
 
   refs.searchInput.value = state.search;
+  syncViewButtonState(refs.viewLiteratureBtn, state.viewMode === "literature");
+  syncViewButtonState(refs.viewSummaryBtn, state.viewMode === "folderSummary");
   refs.sortKeyBtn.textContent = `排序：${getSortKeyLabel(state.sortKey)}`;
   refs.sortDirBtn.textContent = state.sortDir === "desc" ? "降序" : "升序";
-  refs.filterStatusText.textContent = `筛选：${
+  refs.filterStatusText.textContent = `视图：${getViewModeLabel(state.viewMode)} · 筛选：${
     state.folderFilterID == null
       ? "全部文件夹"
       : state.folders.find((f) => f.id === state.folderFilterID)?.name ||
@@ -1005,12 +1312,14 @@ function renderManager(ctx: ManagerContext) {
 
   renderFolderButtons(ctx);
 
-  refs.statusText.textContent = `${state.folders.length} 个文件夹 · 当前页 ${state.rows.length} 条 / 共 ${state.totalRows} 条`;
+  refs.statusText.textContent = `${getViewModeLabel(state.viewMode)} · ${state.folders.length} 个文件夹 · 当前页 ${state.rows.length} 条 / 共 ${state.totalRows} 条`;
   refs.selectionText.textContent = state.selectedRecordIDs.size
     ? `已选 ${state.selectedRecordIDs.size} 条`
     : "未选择";
 
-  renderTableBody(ctx);
+  syncTableSizing(ctx, columns);
+  renderTableHeader(ctx, columns);
+  renderTableBody(ctx, columns);
   renderPreview(ctx);
 }
 
@@ -1117,21 +1426,23 @@ function createFolderButton(
   btn.type = "button";
   btn.style.width = "100%";
   btn.style.textAlign = "left";
-  btn.style.padding = "6px 8px";
+  btn.style.padding = "7px 9px";
   btn.style.borderRadius = "6px";
-  btn.style.border = options.active ? "1px solid #3b82f6" : "1px solid #d1d5db";
+  btn.style.border = options.active ? "1px solid #3b82f6" : "1px solid #dbe3ef";
   btn.style.background = options.active
     ? "#eff6ff"
     : options.selected
-      ? "#f8fafc"
+      ? "#f1f5f9"
       : "#fff";
   btn.style.color = "#111827";
   btn.style.cursor = "pointer";
   btn.style.fontSize = "12px";
+  btn.style.fontWeight = options.active ? "600" : "500";
   btn.style.display = "flex";
   btn.style.alignItems = "center";
   btn.style.justifyContent = "space-between";
   btn.style.gap = "6px";
+  btn.style.transition = "background-color 120ms ease, border-color 120ms ease";
 
   const label = createHTMLElement(doc, "span");
   label.textContent = options.label;
@@ -1145,7 +1456,11 @@ function createFolderButton(
     const badge = createHTMLElement(doc, "span");
     badge.textContent = badges.join(" · ");
     badge.style.fontSize = "10px";
-    badge.style.color = options.active ? "#1d4ed8" : "#64748b";
+    badge.style.color = options.active ? "#1d4ed8" : "#475569";
+    badge.style.background = options.active ? "#dbeafe" : "#f1f5f9";
+    badge.style.border = "1px solid #dbeafe";
+    badge.style.borderRadius = "999px";
+    badge.style.padding = "1px 6px";
     btn.appendChild(badge);
   }
 
@@ -1153,7 +1468,334 @@ function createFolderButton(
   return btn;
 }
 
-function renderTableBody(ctx: ManagerContext) {
+function renderTableHeader(ctx: ManagerContext, columns: TableColumnSpec[]) {
+  const refs = ctx.refs;
+  if (!refs) return;
+  const doc = refs.tableHeadRow.ownerDocument!;
+  refs.tableHeadRow.innerHTML = "";
+  columns.forEach((column, idx) => {
+    const width = getTableColumnWidth(column);
+    const th = createEl(doc, "th", {
+      text: column.label,
+      style: {
+        position: "sticky",
+        top: "0",
+        zIndex: "1",
+        background: "#f3f4f6",
+        borderBottom: "1px solid #e2e8f0",
+        textAlign: column.align || (idx === 0 ? "center" : "left"),
+        padding: "6px 8px",
+        whiteSpace: "nowrap",
+        color: "#334155",
+        fontWeight: "600",
+        boxSizing: "border-box",
+      },
+    });
+    th.style.width = `${width}px`;
+    th.style.minWidth = `${width}px`;
+    th.style.maxWidth = `${width}px`;
+    refs.tableHeadRow.appendChild(th);
+  });
+}
+
+function syncTableSizing(ctx: ManagerContext, columns: TableColumnSpec[]) {
+  const refs = ctx.refs;
+  if (!refs) return;
+  const preferredWidth = getPreferredTableWidth(columns);
+  if (ctx.state.viewMode === "literature") {
+    const width = Math.max(DEFAULT_TABLE_MIN_WIDTH, preferredWidth);
+    refs.table.style.width = `${width}px`;
+    refs.table.style.minWidth = `${width}px`;
+    refs.table.style.maxWidth = "none";
+    refs.table.style.tableLayout = "fixed";
+    return;
+  }
+  const width = Math.max(COMPACT_TABLE_MIN_WIDTH, preferredWidth);
+  refs.table.style.width = `${width}px`;
+  refs.table.style.minWidth = `${width}px`;
+  refs.table.style.maxWidth = "none";
+  refs.table.style.tableLayout = "fixed";
+}
+
+function getPreferredTableWidth(columns: TableColumnSpec[]) {
+  return columns.reduce((total, column) => total + getTableColumnWidth(column), 0);
+}
+
+function getTableColumnWidth(column: TableColumnSpec) {
+  const fallback = column.key === "__select__" ? 64 : 220;
+  const width = Number(column.maxWidth);
+  if (!Number.isFinite(width) || width <= 0) {
+    return fallback;
+  }
+  if (column.key === "__select__") {
+    return Math.max(56, Math.floor(width));
+  }
+  return Math.max(96, Math.floor(width));
+}
+
+function getCurrentTableColumns(ctx: ManagerContext): TableColumnSpec[] {
+  if (ctx.state.viewMode === "folderSummary") {
+    return getFolderSummaryTableColumns();
+  }
+  return getLiteratureTableColumns(ctx.state.literaturePromptFieldKeys);
+}
+
+function getLiteratureTableColumns(
+  promptFieldKeys: ReviewPromptFieldKey[],
+): TableColumnSpec[] {
+  const fields = normalizeLiteraturePromptFieldKeys(promptFieldKeys);
+  const orderedFields: ReviewPromptFieldKey[] = fields.length
+    ? fields
+    : [
+        "title",
+        "authors",
+        "journal",
+        "publicationDate",
+        "classificationTags",
+      ];
+  if (!orderedFields.includes("title")) {
+    orderedFields.unshift("title");
+  }
+
+  const contentColumns = orderedFields
+    .map((key) => buildLiteratureFieldColumn(key))
+    .filter((col): col is TableColumnSpec => Boolean(col));
+
+  contentColumns.push({
+    key: "folder",
+    label: "文件夹",
+    maxWidth: 220,
+    renderCell: (_ctx, row) => getRecordFolderLabel(row),
+  });
+  contentColumns.push({
+    key: "updatedAt",
+    label: "更新时间",
+    maxWidth: 160,
+    renderCell: (_ctx, row) => formatTime(row.updatedAt),
+  });
+
+  return [buildSelectionColumn(), ...contentColumns];
+}
+
+function getFolderSummaryTableColumns(): TableColumnSpec[] {
+  return [
+    buildSelectionColumn(),
+    {
+      key: "title",
+      label: "标题",
+      maxWidth: 420,
+      renderCell: (_ctx, row) =>
+        truncateAdaptive(row.title, 60, 420) || "(无标题)",
+    },
+    {
+      key: "sourceRecordCount",
+      label: "来源数",
+      align: "center",
+      maxWidth: 80,
+      renderCell: (_ctx, row) => String((row.sourceRecordIDs || []).length),
+    },
+    {
+      key: "folder",
+      label: "文件夹",
+      maxWidth: 220,
+      renderCell: (_ctx, row) => getRecordFolderLabel(row),
+    },
+    {
+      key: "updatedAt",
+      label: "更新时间",
+      maxWidth: 160,
+      renderCell: (_ctx, row) => formatTime(row.updatedAt),
+    },
+  ];
+}
+
+function normalizeLiteraturePromptFieldKeys(promptFieldKeys: ReviewPromptFieldKey[]) {
+  const supported: ReviewPromptFieldKey[] = [
+    "title",
+    "authors",
+    "journal",
+    "publicationDate",
+    "abstract",
+    "researchBackground",
+    "literatureReview",
+    "researchMethods",
+    "researchConclusions",
+    "keyFindings",
+    "classificationTags",
+    "pdfAnnotationNotesText",
+  ];
+  const allowed = new Set(supported);
+  const keys = (promptFieldKeys || []).filter((key) => allowed.has(key));
+  return Array.from(new Set(keys));
+}
+
+function buildSelectionColumn(): TableColumnSpec {
+  return {
+    key: "__select__",
+    label: "选中",
+    align: "center",
+    maxWidth: 64,
+    renderCell: (ctx, row, rowIndex) => {
+      const checkbox = createHTMLElement(
+        ctx.refs!.tableBody.ownerDocument!,
+        "input",
+      );
+      checkbox.type = "checkbox";
+      checkbox.checked = ctx.state.selectedRecordIDs.has(row.id);
+      checkbox.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        applyRecordSelectionByEvent(
+          ctx,
+          row.id,
+          rowIndex,
+          ev as MouseEvent,
+          "checkbox",
+        );
+        renderManager(ctx);
+      });
+      return checkbox;
+    },
+  };
+}
+
+function buildLiteratureFieldColumn(
+  fieldKey: ReviewPromptFieldKey,
+): TableColumnSpec | null {
+  switch (fieldKey) {
+    case "title":
+      return {
+        key: "title",
+        label: "标题",
+        maxWidth: 420,
+        renderCell: (ctx, row) => createRecordTitleCell(ctx, row),
+      };
+    case "authors":
+      return {
+        key: "authors",
+        label: "作者",
+        maxWidth: 220,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, row.authors, 48, 220),
+      };
+    case "journal":
+      return {
+        key: "journal",
+        label: "期刊",
+        maxWidth: 220,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, row.journal, 40, 220),
+      };
+    case "publicationDate":
+      return {
+        key: "publicationDate",
+        label: "时间",
+        maxWidth: 120,
+        renderCell: (_ctx, row) => row.publicationDate || "",
+      };
+    case "abstract":
+      return {
+        key: "abstract",
+        label: "摘要",
+        maxWidth: 420,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, row.abstractText, 120, 420),
+      };
+    case "researchBackground":
+      return {
+        key: "researchBackground",
+        label: "研究背景",
+        maxWidth: 420,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, row.researchBackground, 120, 420),
+      };
+    case "literatureReview":
+      return {
+        key: "literatureReview",
+        label: "文献综述",
+        maxWidth: 420,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, row.literatureReview, 120, 420),
+      };
+    case "researchMethods":
+      return {
+        key: "researchMethods",
+        label: "研究方法",
+        maxWidth: 360,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, row.researchMethods, 110, 360),
+      };
+    case "researchConclusions":
+      return {
+        key: "researchConclusions",
+        label: "研究结论",
+        maxWidth: 360,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, row.researchConclusions, 110, 360),
+      };
+    case "keyFindings":
+      return {
+        key: "keyFindings",
+        label: "关键发现",
+        maxWidth: 360,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, (row.keyFindings || []).join("；"), 110, 360),
+      };
+    case "classificationTags":
+      return {
+        key: "classificationTags",
+        label: "标签",
+        maxWidth: 260,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(ctx, row.classificationTags.join(", "), 72, 260),
+      };
+    case "pdfAnnotationNotesText":
+      return {
+        key: "pdfAnnotationNotesText",
+        label: "PDF批注",
+        maxWidth: 360,
+        renderCell: (ctx, row) =>
+          formatLiteratureCellText(
+            ctx,
+            String(row.pdfAnnotationNotesText || ""),
+            110,
+            360,
+          ),
+      };
+    default:
+      return null;
+  }
+}
+
+function formatLiteratureCellText(
+  _ctx: ManagerContext,
+  text: string,
+  limit: number,
+  maxWidth: number,
+) {
+  return truncateAdaptive(text, limit, maxWidth);
+}
+
+function createRecordTitleCell(ctx: ManagerContext, row: ReviewRecordRow) {
+  const doc = ctx.refs!.tableBody.ownerDocument!;
+  const titleText = truncateAdaptive(row.title, 60, 420) || "(无标题)";
+  if (row.recordType === "folderSummary") {
+    return titleText;
+  }
+  const titleLink = createHTMLElement(doc, "a");
+  titleLink.href = "#";
+  titleLink.textContent = titleText;
+  titleLink.title = row.title;
+  titleLink.style.color = "#1d4ed8";
+  titleLink.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    focusZoteroItem(row.zoteroItemID);
+  });
+  return titleLink;
+}
+
+function renderTableBody(ctx: ManagerContext, columns: TableColumnSpec[]) {
   const refs = ctx.refs;
   if (!refs) return;
   const { state } = ctx;
@@ -1164,8 +1806,11 @@ function renderTableBody(ctx: ManagerContext) {
   if (!state.rows.length) {
     const tr = createHTMLElement(doc, "tr");
     const td = createHTMLElement(doc, "td");
-    td.colSpan = 8;
-    td.textContent = "暂无数据。请先右键条目执行 AI 提炼并保存结果。";
+    td.colSpan = Math.max(1, columns.length);
+    td.textContent =
+      state.viewMode === "folderSummary"
+        ? "暂无合并综述记录。请先在左侧选择文件夹并执行“合并综述”。"
+        : "暂无文献记录。请先右键条目执行 AI 提炼并保存结果。";
     td.style.padding = "12px";
     td.style.color = "#6b7280";
     tr.appendChild(td);
@@ -1176,46 +1821,28 @@ function renderTableBody(ctx: ManagerContext) {
   state.rows.forEach((row, rowIndex) => {
     const tr = createHTMLElement(doc, "tr");
     tr.style.borderBottom = "1px solid #f1f5f9";
-    tr.style.background = state.selectedRecordIDs.has(row.id)
-      ? "#eff6ff"
-      : "#fff";
+    const baseBackground = state.selectedRecordIDs.has(row.id)
+      ? "#e8f1ff"
+      : rowIndex % 2 === 0
+        ? "#ffffff"
+        : "#f8fafc";
+    tr.style.background = baseBackground;
+    tr.style.borderLeft = state.selectedRecordIDs.has(row.id)
+      ? "2px solid #3b82f6"
+      : "2px solid transparent";
+    tr.style.transition = "background-color 120ms ease";
 
-    const checkbox = createHTMLElement(doc, "input");
-    checkbox.type = "checkbox";
-    checkbox.checked = state.selectedRecordIDs.has(row.id);
-    checkbox.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      ev.preventDefault();
-      applyRecordSelectionByEvent(
-        ctx,
-        row.id,
-        rowIndex,
-        ev as MouseEvent,
-        "checkbox",
-      );
-      renderManager(ctx);
+    columns.forEach((column) => {
+      const applyLiteratureTextMode =
+        ctx.state.viewMode === "literature" && column.key !== "__select__";
+      const width = getTableColumnWidth(column);
+      appendCell(tr, column.renderCell(ctx, row, rowIndex), {
+        align: column.align || "left",
+        width,
+        maxWidth: column.maxWidth,
+        nowrap: applyLiteratureTextMode ? true : undefined,
+      });
     });
-
-    appendCell(tr, checkbox, { align: "center" });
-
-    const titleLink = createHTMLElement(doc, "a");
-    titleLink.href = "#";
-    titleLink.textContent = truncate(row.title, 60) || "(无标题)";
-    titleLink.title = row.title;
-    titleLink.style.color = "#1d4ed8";
-    titleLink.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      focusZoteroItem(row.zoteroItemID);
-    });
-    appendCell(tr, titleLink);
-
-    appendCell(tr, truncate(row.authors, 40));
-    appendCell(tr, truncate(row.journal, 28));
-    appendCell(tr, row.publicationDate || "");
-    appendCell(tr, getRecordFolderLabel(row));
-    appendCell(tr, truncate(row.classificationTags.join(", "), 32));
-    appendCell(tr, formatTime(row.updatedAt));
 
     tr.addEventListener("click", (ev) => {
       const target = ev.target as HTMLElement;
@@ -1229,6 +1856,24 @@ function renderTableBody(ctx: ManagerContext) {
         "row",
       );
       renderManager(ctx);
+    });
+
+    tr.addEventListener("mouseenter", () => {
+      if (!ctx.state.selectedRecordIDs.has(row.id)) {
+        tr.style.background = "#eef4ff";
+      }
+    });
+
+    tr.addEventListener("mouseleave", () => {
+      const selected = ctx.state.selectedRecordIDs.has(row.id);
+      tr.style.background = selected
+        ? "#e8f1ff"
+        : rowIndex % 2 === 0
+          ? "#ffffff"
+          : "#f8fafc";
+      tr.style.borderLeft = selected
+        ? "2px solid #3b82f6"
+        : "2px solid transparent";
     });
 
     refs.tableBody.appendChild(tr);
@@ -1245,6 +1890,7 @@ function renderPreview(ctx: ManagerContext) {
   }
 
   refs.preview.value = [
+    `类型: ${getRecordTypeLabel(row.recordType)}`,
     `标题: ${row.title}`,
     `作者: ${row.authors}`,
     `期刊: ${row.journal}`,
@@ -1271,6 +1917,15 @@ function renderPreview(ctx: ManagerContext) {
     ...(row.keyFindings.length
       ? row.keyFindings.map((v, i) => `${i + 1}. ${v}`)
       : ["（无）"]),
+    "",
+    "来源文献记录ID:",
+    (row.sourceRecordIDs || []).length
+      ? row.sourceRecordIDs.join(", ")
+      : "（无）",
+    "来源文献条目ID:",
+    (row.sourceZoteroItemIDs || []).length
+      ? row.sourceZoteroItemIDs.join(", ")
+      : "（无）",
     "",
     "PDF批注与笔记:",
     String(row.pdfAnnotationNotesText || "").trim() || "（无）",
@@ -1350,6 +2005,29 @@ function getTotalPages(totalRows: number, pageSize: number) {
   return Math.max(1, Math.ceil(safeTotal / safeSize));
 }
 
+function switchManagerView(
+  ctx: ManagerContext,
+  nextViewMode: ManagerState["viewMode"],
+) {
+  if (ctx.state.viewMode === nextViewMode) return;
+  ctx.state.viewMode = nextViewMode;
+  ctx.state.page = 1;
+  ctx.state.selectedRecordIDs.clear();
+  ctx.state.selectionAnchorRecordID = null;
+  void refreshAndRender(ctx);
+}
+
+function syncViewButtonState(btn: HTMLButtonElement, active: boolean) {
+  btn.dataset.active = active ? "1" : "0";
+  btn.style.background = active ? "#eff6ff" : "#fff";
+  btn.style.color = active ? "#1d4ed8" : "#111827";
+  btn.style.fontWeight = active ? "600" : "400";
+}
+
+function getViewModeLabel(viewMode: ManagerState["viewMode"]) {
+  return viewMode === "folderSummary" ? "合并综述" : "文献记录";
+}
+
 function getSortKeyLabel(sortKey: ManagerState["sortKey"]) {
   switch (sortKey) {
     case "title":
@@ -1362,6 +2040,10 @@ function getSortKeyLabel(sortKey: ManagerState["sortKey"]) {
     default:
       return "更新时间";
   }
+}
+
+function getRecordTypeLabel(recordType: ReviewRecordRow["recordType"]) {
+  return recordType === "folderSummary" ? "合并综述" : "文献记录";
 }
 
 function isProtectedFolderName(name: string) {
@@ -1601,16 +2283,29 @@ function applyRecordSelectionByEvent(
 function appendCell(
   tr: HTMLTableRowElement,
   content: string | Node,
-  options: { align?: string } = {},
+  options: {
+    align?: string;
+    width?: number;
+    maxWidth?: number;
+    nowrap?: boolean;
+  },
 ) {
   const td = createHTMLElement(tr.ownerDocument!, "td");
   td.style.padding = "6px 8px";
   td.style.verticalAlign = "top";
   td.style.textAlign = options.align || "left";
-  td.style.maxWidth = "280px";
+  const maxWidth = Math.max(56, Number(options.maxWidth) || 280);
+  const fixedWidth = Math.max(56, Math.floor(Number(options.width) || maxWidth));
+  td.style.width = `${fixedWidth}px`;
+  td.style.minWidth = `${fixedWidth}px`;
+  td.style.boxSizing = "border-box";
+  td.style.maxWidth = `${fixedWidth}px`;
   td.style.overflow = "hidden";
   td.style.textOverflow = "ellipsis";
-  td.style.whiteSpace = "nowrap";
+  td.style.whiteSpace = options.nowrap === false ? "normal" : "nowrap";
+  if (options.nowrap === false) {
+    td.style.textOverflow = "clip";
+  }
   if (typeof content === "string") {
     td.textContent = content;
   } else {
@@ -1623,13 +2318,39 @@ function createButton(doc: Document, label: string) {
   const btn = createHTMLElement(doc, "button");
   btn.type = "button";
   btn.textContent = label;
+  btn.dataset.active = "0";
   btn.style.height = "28px";
   btn.style.padding = "0 10px";
-  btn.style.border = "1px solid #d1d5db";
-  btn.style.borderRadius = "4px";
+  btn.style.border = "1px solid #cbd5e1";
+  btn.style.borderRadius = "6px";
   btn.style.background = "#fff";
   btn.style.cursor = "pointer";
   btn.style.fontSize = "12px";
+  btn.style.color = "#0f172a";
+  btn.style.transition =
+    "background-color 120ms ease, border-color 120ms ease, color 120ms ease";
+  btn.addEventListener("mouseenter", () => {
+    if (btn.disabled || btn.dataset.segmented === "1" || btn.dataset.active === "1") {
+      return;
+    }
+    btn.style.background = "#f8fafc";
+    btn.style.borderColor = "#94a3b8";
+  });
+  btn.addEventListener("mouseleave", () => {
+    if (btn.disabled || btn.dataset.segmented === "1" || btn.dataset.active === "1") {
+      return;
+    }
+    btn.style.background = "#fff";
+    btn.style.borderColor = "#cbd5e1";
+  });
+  btn.addEventListener("focus", () => {
+    if (btn.dataset.segmented === "1" || btn.dataset.active === "1") return;
+    btn.style.borderColor = "#93c5fd";
+  });
+  btn.addEventListener("blur", () => {
+    if (btn.dataset.segmented === "1" || btn.dataset.active === "1") return;
+    btn.style.borderColor = "#cbd5e1";
+  });
   return btn;
 }
 
@@ -1665,6 +2386,97 @@ function createHTMLElement<K extends keyof HTMLElementTagNameMap>(
 function truncate(text: string, limit: number) {
   const input = String(text || "");
   return input.length > limit ? `${input.slice(0, limit - 1)}…` : input;
+}
+
+function truncateAdaptive(text: string, baseLimit: number, maxWidth: number) {
+  const input = String(text || "");
+  if (!input) return "";
+
+  const normalizedBase = Math.max(8, Math.floor(Number(baseLimit) || 8));
+  const normalizedWidth = Math.max(120, Math.floor(Number(maxWidth) || 120));
+
+  const widthFactor = clampNumber(
+    normalizedWidth / TABLE_TRUNCATE_BASE_WIDTH,
+    0.75,
+    1.9,
+  );
+
+  let cjkCount = 0;
+  let latinCount = 0;
+  let whitespaceCount = 0;
+  for (const ch of input) {
+    if (isCJKCharacter(ch)) {
+      cjkCount += 1;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      whitespaceCount += 1;
+      continue;
+    }
+    if (/[A-Za-z0-9]/.test(ch)) {
+      latinCount += 1;
+    }
+  }
+
+  const totalLength = Math.max(1, input.length);
+  const cjkRatio = cjkCount / totalLength;
+  const latinRatio = latinCount / totalLength;
+  const whitespaceRatio = whitespaceCount / totalLength;
+  const scriptFactor = cjkRatio >= 0.55 ? 0.96 : latinRatio >= 0.55 ? 1.16 : 1;
+  const spacingFactor = whitespaceRatio >= 0.16 ? 1.12 : 1;
+  const longTokenFactor = /\S{28,}/.test(input) ? 0.95 : 1;
+
+  const adaptiveLimit = Math.round(
+    normalizedBase * widthFactor * scriptFactor * spacingFactor * longTokenFactor,
+  );
+  const minLimit = Math.max(
+    TABLE_TRUNCATE_MIN_SENTENCE_LENGTH,
+    Math.floor(normalizedBase * TABLE_TRUNCATE_MIN_FACTOR),
+  );
+  const maxLimit = Math.max(
+    minLimit + 8,
+    Math.floor(normalizedBase * TABLE_TRUNCATE_MAX_FACTOR),
+  );
+  const rawLimit = clampNumber(adaptiveLimit, minLimit, maxLimit);
+  const finalLimit = expandToSentenceBoundary(
+    input,
+    rawLimit,
+    TABLE_TRUNCATE_BOUNDARY_WINDOW,
+  );
+  return truncate(input, finalLimit);
+}
+
+function expandToSentenceBoundary(text: string, limit: number, windowSize: number) {
+  const input = String(text || "");
+  if (input.length <= limit) return input.length;
+
+  const start = Math.max(0, limit - 2);
+  const end = Math.min(input.length - 1, limit + Math.max(0, windowSize));
+  let secondaryBoundary = -1;
+  for (let i = start; i <= end; i++) {
+    const ch = input[i];
+    if (/[。！？.!?]/.test(ch)) {
+      return i + 1;
+    }
+    if (secondaryBoundary < 0 && /[；;，,]/.test(ch)) {
+      secondaryBoundary = i + 1;
+    }
+  }
+  if (secondaryBoundary > 0) return secondaryBoundary;
+  return limit;
+}
+
+function isCJKCharacter(ch: string) {
+  const code = ch.codePointAt(0) || 0;
+  return (
+    (code >= 0x3400 && code <= 0x9fff) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0x20000 && code <= 0x2ceaf)
+  );
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function formatTime(iso: string) {

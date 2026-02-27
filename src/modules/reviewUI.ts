@@ -1,7 +1,6 @@
 import { config } from "../../package.json";
 import { extractLiteratureReview, getReviewErrorMessage } from "./reviewAI";
 import type { ReviewExtractionProgress } from "./reviewAI";
-import { getReviewSettings } from "./reviewConfig";
 import {
   closeReviewManagerWindow,
   openReviewManagerWindow,
@@ -10,7 +9,6 @@ import {
   createReviewFolder,
   ensureDefaultReviewFolder,
   getReviewRecordByItemID,
-  getTodayAIExtractionCount,
   initReviewStore,
   listReviewFolders,
   trackReviewEvent,
@@ -71,7 +69,7 @@ export function registerReviewToolbarButton(win: _ZoteroTypes.MainWindow) {
   if (isXUL && (doc as any).createXULElement) {
     button = (doc as any).createXULElement("toolbarbutton");
     button.setAttribute("id", id);
-    button.setAttribute("label", "文献综述");
+    button.setAttribute("label", "");
     button.setAttribute(
       "image",
       `chrome://${config.addonRef}/content/icons/favicon@0.5x.png`,
@@ -85,15 +83,23 @@ export function registerReviewToolbarButton(win: _ZoteroTypes.MainWindow) {
     const htmlButton = doc.createElement("button");
     htmlButton.id = id;
     htmlButton.type = "button";
-    htmlButton.textContent = "文献综述";
+    htmlButton.textContent = "";
+    htmlButton.title = "打开文献综述管理";
+    htmlButton.setAttribute("aria-label", "打开文献综述管理");
     Object.assign(htmlButton.style, {
       marginLeft: "6px",
-      padding: "4px 10px",
+      width: "26px",
+      height: "26px",
+      padding: "0",
       border: "1px solid #cbd5e1",
       borderRadius: "4px",
-      background: "#ffffff",
+      backgroundColor: "#ffffff",
+      backgroundImage: `url(chrome://${config.addonRef}/content/icons/favicon@0.5x.png)`,
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: "center",
+      backgroundSize: "16px 16px",
       cursor: "pointer",
-      fontSize: "12px",
+      fontSize: "0",
     });
     htmlButton.addEventListener("click", () => {
       void openReviewManagerWindow(win);
@@ -138,23 +144,6 @@ export async function handleExtractFromSelection() {
   }
 
   await initReviewStore();
-  const settings = getReviewSettings();
-  const todayCount = await getTodayAIExtractionCount().catch((e) => {
-    ztoolkit.log(e);
-    return 0;
-  });
-  if (todayCount >= settings.dailyLimit) {
-    showAlert(
-      `今日 AI 提炼调用已达到上限（${settings.dailyLimit} 次）。请明天再试或在设置中调整上限。`,
-    );
-    return;
-  }
-  if (todayCount + items.length > settings.dailyLimit) {
-    showAlert(
-      `当前选择 ${items.length} 篇会超过今日上限（已使用 ${todayCount}/${settings.dailyLimit}）。请减少选择数量。`,
-    );
-    return;
-  }
   await trackReviewEvent("ai_extraction_click", {
     timestamp: new Date().toISOString(),
     article_count: items.length,

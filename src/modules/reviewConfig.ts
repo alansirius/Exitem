@@ -1,25 +1,21 @@
 import { getPref, setPref } from "../utils/prefs";
 import {
   AwesomeGPTDetection,
-  ReviewAPIConfigMode,
-  ReviewModelConfigMode,
-  ReviewProvider,
   ReviewSettings,
   ZoteroGPTPrefsSnapshot,
 } from "./reviewTypes";
 
 const DEFAULTS: ReviewSettings = {
-  modelConfigMode: "custom",
+  modelConfigMode: "awesomegpt",
   apiConfigMode: "zoterogpt",
   provider: "openai",
   api: "https://api.openai.com",
   secretKey: "",
-  model: "gpt-4o-mini",
+  model: "zotero-gpt",
   temperature: 1.0,
   embeddingModel: "text-embedding-ada-002",
   embeddingBatchNum: 10,
   timeoutSeconds: 600,
-  dailyLimit: 100,
   usePDFAsInputSource: true,
   usePDFAnnotationsAsContext: true,
   importPDFAnnotationsAsField: true,
@@ -31,43 +27,22 @@ const DEFAULTS: ReviewSettings = {
 };
 
 export function getReviewSettings(): ReviewSettings {
-  const mode = String(
-    getPref("modelConfigMode") || DEFAULTS.modelConfigMode,
-  ) as ReviewModelConfigMode;
-  const apiConfigMode = String(
-    getPref("apiConfigMode") || DEFAULTS.apiConfigMode,
-  ) as ReviewAPIConfigMode;
-  const provider = String(
-    getPref("provider") || DEFAULTS.provider,
-  ) as ReviewProvider;
+  const snapshot = getZoteroGPTPrefsSnapshot();
 
   return {
-    modelConfigMode: mode === "awesomegpt" ? "awesomegpt" : "custom",
-    apiConfigMode: apiConfigMode === "custom" ? "custom" : "zoterogpt",
-    provider: provider === "gemini" ? "gemini" : "openai",
-    api: normalizeAPIBase(
-      String(getPref("api") || getPref("apiBaseURL") || DEFAULTS.api).trim(),
-    ),
-    secretKey: String(getPref("secretKey") || getPref("apiKey") || "").trim(),
-    model: String(getPref("model") || DEFAULTS.model).trim(),
-    temperature: normalizeFloat(
-      getPref("temperature"),
-      DEFAULTS.temperature,
-      0,
-      2,
-    ),
-    embeddingModel: String(
-      getPref("embeddingModel") || DEFAULTS.embeddingModel,
-    ).trim(),
-    embeddingBatchNum: Math.max(
-      1,
-      normalizeInt(getPref("embeddingBatchNum"), DEFAULTS.embeddingBatchNum),
-    ),
+    modelConfigMode: "awesomegpt",
+    apiConfigMode: "zoterogpt",
+    provider: "openai",
+    api: snapshot?.api || DEFAULTS.api,
+    secretKey: snapshot?.secretKey || "",
+    model: snapshot?.model || DEFAULTS.model,
+    temperature: snapshot?.temperature ?? DEFAULTS.temperature,
+    embeddingModel: snapshot?.embeddingModel || DEFAULTS.embeddingModel,
+    embeddingBatchNum: snapshot?.embeddingBatchNum || DEFAULTS.embeddingBatchNum,
     timeoutSeconds: Math.max(
       DEFAULTS.timeoutSeconds,
       normalizeInt(getPref("timeoutSeconds"), DEFAULTS.timeoutSeconds),
     ),
-    dailyLimit: normalizeInt(getPref("dailyLimit"), DEFAULTS.dailyLimit),
     usePDFAsInputSource: normalizeBool(
       getPref("usePDFAsInputSource"),
       DEFAULTS.usePDFAsInputSource,
@@ -107,21 +82,24 @@ export function getReviewSettings(): ReviewSettings {
 
 export function saveReviewSettings(input: Partial<ReviewSettings>) {
   const current = getReviewSettings();
-  const next = { ...current, ...input };
-  setPref("modelConfigMode", next.modelConfigMode);
-  setPref("apiConfigMode", next.apiConfigMode);
-  setPref("provider", next.provider);
-  setPref("api", normalizeAPIBase(next.api));
-  setPref("secretKey", next.secretKey);
-  setPref("embeddingModel", next.embeddingModel);
-  setPref("embeddingBatchNum", next.embeddingBatchNum);
-  // Legacy aliases kept in sync for backward compatibility with older Exitem builds.
-  setPref("apiBaseURL", normalizeAPIBase(next.api));
-  setPref("apiKey", next.secretKey);
-  setPref("model", next.model);
-  setPref("temperature", next.temperature);
-  setPref("timeoutSeconds", next.timeoutSeconds);
-  setPref("dailyLimit", next.dailyLimit);
+  const next: ReviewSettings = {
+    ...current,
+    ...input,
+    modelConfigMode: "awesomegpt",
+    apiConfigMode: "zoterogpt",
+    provider: "openai",
+  };
+
+  setPref("modelConfigMode", "awesomegpt");
+  setPref("apiConfigMode", "zoterogpt");
+  setPref("provider", "openai");
+  setPref(
+    "timeoutSeconds",
+    Math.max(
+      DEFAULTS.timeoutSeconds,
+      normalizeInt(next.timeoutSeconds, DEFAULTS.timeoutSeconds),
+    ),
+  );
   setPref("usePDFAsInputSource", Boolean(next.usePDFAsInputSource));
   setPref(
     "usePDFAnnotationsAsContext",
@@ -191,22 +169,26 @@ export function getZoteroGPTPrefsSnapshot(): ZoteroGPTPrefsSnapshot | null {
 
 export function getEffectiveReviewAPISettings(settings = getReviewSettings()) {
   const snapshot = getZoteroGPTPrefsSnapshot();
-  if (snapshot) {
+  if (!snapshot) {
     return {
       ...settings,
+      modelConfigMode: "awesomegpt" as const,
       apiConfigMode: "zoterogpt" as const,
       provider: "openai" as const,
-      api: snapshot.api,
-      secretKey: snapshot.secretKey,
-      model: snapshot.model,
-      temperature: snapshot.temperature,
-      embeddingModel: snapshot.embeddingModel,
-      embeddingBatchNum: snapshot.embeddingBatchNum,
     };
   }
+
   return {
     ...settings,
-    apiConfigMode: "custom" as const,
+    modelConfigMode: "awesomegpt" as const,
+    apiConfigMode: "zoterogpt" as const,
+    provider: "openai" as const,
+    api: snapshot.api,
+    secretKey: snapshot.secretKey,
+    model: snapshot.model,
+    temperature: snapshot.temperature,
+    embeddingModel: snapshot.embeddingModel,
+    embeddingBatchNum: snapshot.embeddingBatchNum,
   };
 }
 
@@ -258,7 +240,6 @@ export function detectAwesomeGPT(): AwesomeGPTDetection {
     }
   }
 
-  // Best-effort add-on manager detection (may be unavailable in some contexts)
   try {
     const maybeAddonManager = (globalThis as any).AddonManager;
     if (maybeAddonManager?.getAddonByID) {
@@ -324,7 +305,7 @@ export async function detectAwesomeGPTAsync(): Promise<AwesomeGPTDetection> {
       addonName: String(match.name || "GPT 插件"),
       detail: `已检测到插件：${String(match.name || "GPT 插件")}`,
       obstacle:
-        "已安装但未检测到可调用接口。该插件可能未向其他插件暴露稳定 API，建议优先使用本插件 API 配置。",
+        "已安装但未检测到可调用接口，请确认 Zotero GPT 版本与运行时状态。",
     };
   } catch (e: any) {
     return {
@@ -335,9 +316,9 @@ export async function detectAwesomeGPTAsync(): Promise<AwesomeGPTDetection> {
   }
 }
 
-export function isCustomAIConfigured(settings = getReviewSettings()) {
-  const effective = getEffectiveReviewAPISettings(settings);
-  return Boolean(effective.secretKey && effective.model);
+export function isCustomAIConfigured(_settings = getReviewSettings()) {
+  const snapshot = getZoteroGPTPrefsSnapshot();
+  return Boolean(snapshot?.secretKey && snapshot?.model);
 }
 
 function normalizeInt(value: unknown, fallback: number) {

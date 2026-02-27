@@ -10,16 +10,7 @@ declare namespace _ZoteroTypes {
       "modelConfigMode": string;
       "apiConfigMode": string;
       "provider": string;
-      "api": string;
-      "secretKey": string;
-      "embeddingModel": string;
-      "embeddingBatchNum": number;
-      "temperature": number;
-      "apiBaseURL": string;
-      "apiKey": string;
-      "model": string;
       "timeoutSeconds": number;
-      "dailyLimit": number;
       "usePDFAsInputSource": boolean;
       "usePDFAnnotationsAsContext": boolean;
       "importPDFAnnotationsAsField": boolean;

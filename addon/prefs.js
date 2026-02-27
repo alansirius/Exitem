@@ -1,16 +1,7 @@
-pref("modelConfigMode", "custom");
+pref("modelConfigMode", "awesomegpt");
 pref("apiConfigMode", "zoterogpt");
 pref("provider", "openai");
-pref("api", "https://api.openai.com");
-pref("secretKey", "");
-pref("embeddingModel", "text-embedding-ada-002");
-pref("embeddingBatchNum", 10);
-pref("temperature", 1.0);
-pref("apiBaseURL", "https://api.openai.com/v1");
-pref("apiKey", "");
-pref("model", "gpt-4o-mini");
 pref("timeoutSeconds", 600);
-pref("dailyLimit", 100);
 pref("usePDFAsInputSource", true);
 pref("usePDFAnnotationsAsContext", true);
 pref("importPDFAnnotationsAsField", true);

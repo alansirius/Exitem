@@ -1,8 +1,4 @@
-import {
-  detectAwesomeGPTAsync,
-  getEffectiveReviewAPISettings,
-  getReviewSettings,
-} from "./reviewConfig";
+import { detectAwesomeGPTAsync, getReviewSettings } from "./reviewConfig";
 import {
   LiteratureReviewDraft,
   ReviewRecordRow,
@@ -20,31 +16,73 @@ const EMBEDDING_MAX_CHUNKS = 12;
 const EMBEDDING_CHUNK_CHARS = 1200;
 const EMBEDDING_TOP_K = 4;
 
+export type ReviewPromptFieldKey =
+  | "title"
+  | "authors"
+  | "journal"
+  | "publicationDate"
+  | "abstract"
+  | "researchBackground"
+  | "literatureReview"
+  | "researchMethods"
+  | "researchConclusions"
+  | "keyFindings"
+  | "classificationTags"
+  | "pdfAnnotationNotesText";
+
+const DEFAULT_REVIEW_PROMPT_FIELD_KEYS: ReviewPromptFieldKey[] = [
+  "title",
+  "authors",
+  "journal",
+  "publicationDate",
+  "abstract",
+  "researchBackground",
+  "literatureReview",
+  "researchMethods",
+  "researchConclusions",
+  "keyFindings",
+  "classificationTags",
+];
+
 export interface ReviewExtractionProgress {
   progress: number;
   stage: string;
 }
 
 export const DEFAULT_REVIEW_PROMPT_TEMPLATE = [
-  "请根据以下文献信息生成结构化提炼结果。",
-  "要求：",
-  "1. 仅返回 JSON 对象，不要代码块。",
+  "你是一名严谨的学术研究助理。请基于下方单篇文献信息输出结构化提炼结果。",
+  "硬性要求：",
+  "1. 仅返回 JSON 对象本体，不要 Markdown、不要代码块、不要额外说明文本。",
   "2. 使用中文输出（title/authors/journal/publicationDate 可保留原文）。",
-  "3. 字段必须包含：title, authors, journal, publicationDate, abstract, researchBackground, literatureReview, researchMethods, researchConclusions, keyFindings, classificationTags",
-  "4. keyFindings 和 classificationTags 必须是字符串数组。",
-  "5. 若信息不足，请明确写出“信息不足”而不是编造。",
+  "3. 必须包含字段：title, authors, journal, publicationDate, abstract, researchBackground, literatureReview, researchMethods, researchConclusions, keyFindings, classificationTags。",
+  "4. keyFindings 与 classificationTags 必须是字符串数组，不得返回对象数组。",
+  "5. 严格依据提供材料，不得编造；信息不足时写“信息不足：<缺失点>”。",
+  "内容深度要求：",
+  "6. abstract：150-300字，交代研究对象、核心问题、数据/语料与主要结果。",
+  "7. researchBackground：300-600字，说明研究动机、学术背景、关键争议与切入点。",
+  "8. literatureReview：500-900字，系统梳理相关研究脉络、代表观点与本文定位。",
+  "9. researchMethods：300-700字，描述数据来源、样本、变量/指标、方法流程与评估方式。",
+  "10. researchConclusions：250-500字，总结主要结论、证据强度、局限与适用范围。",
+  "11. keyFindings：输出 6-12 条，每条尽量具体（20-80字），避免空泛与重复。",
+  "12. classificationTags：输出 8-15 个标签，覆盖主题、任务、方法、数据、领域与结论特征。",
   "",
   "文献信息如下：",
   "{{sourceContent}}",
 ].join("\n");
 
 export const DEFAULT_FOLDER_SUMMARY_PROMPT_TEMPLATE = [
-  "请基于同一文件夹下的多篇文献提炼记录，生成一份中文综合综述。",
-  "要求：",
-  "1. 输出结构清晰、便于阅读，可使用分标题。",
-  "2. 至少包含：主题概述、研究脉络、方法比较、主要结论、分歧与局限、未来方向。",
-  "3. 严格基于提供的记录信息，不要编造文献细节。",
-  "4. 如果信息不足，请明确指出不足之处。",
+  "你是一名学术综述写作助手。请基于同一文件夹下的多篇提炼记录，生成一篇中文综合综述。",
+  "输出格式要求（硬性）：",
+  "1. 仅输出纯文本正文，不要任何 Markdown 标记符，不要项目符号，不要编号列表。",
+  "2. 返回前必须执行一次 Markdown 清理：移除 #、##、###、*、**、-、+、>、`、```、[]() 链接格式、| 表格符号、以及 1. 2. 3. 等列表前缀。",
+  "3. 使用连续论述段落，可自然分段，但每段都应是完整叙述句。",
+  "4. 不要输出“小标题：”式分节标题，不要附加无关说明。",
+  "内容要求：",
+  "5. 先给出整体研究图景，再展开研究脉络、方法路线、关键结论的一致与分歧、证据强弱与局限、未来方向。",
+  "6. 体现不同文献之间的联系、演化关系与互相印证/冲突点，避免逐条罗列。",
+  "7. 严格基于给定记录，不得编造未提供的实验、数据或结论。",
+  "8. 信息不足处请直接写“现有记录信息不足：<具体方面>”。",
+  "9. 文本尽量充分，建议 1800-3200 字；优先保证准确性、覆盖度与可读性。",
   "",
   "文件夹名称：{{folderName}}",
   "",
@@ -104,11 +142,6 @@ export async function extractLiteratureReview(
 
   const settings = getReviewSettings();
   const source = await buildItemSource(item, settings, report);
-  const effectiveSettings = getEffectiveReviewAPISettings(settings);
-  const hasConfiguredAPI = Boolean(
-    String(effectiveSettings.secretKey || "").trim() &&
-    String(effectiveSettings.model || "").trim(),
-  );
   report(35, "整理提炼输入");
 
   if (source.content.length > MAX_SOURCE_CONTENT_CHARS) {
@@ -118,7 +151,7 @@ export async function extractLiteratureReview(
     );
   }
 
-  if (settings.modelConfigMode === "awesomegpt") {
+  try {
     report(42, "检查 GPT 插件");
     return await extractByCompatibleGPTPlugin(
       item,
@@ -127,67 +160,6 @@ export async function extractLiteratureReview(
       settings.customPromptTemplate,
       report,
     );
-  }
-
-  if (!hasConfiguredAPI) {
-    report(42, "检查 AI 配置");
-    // UX fallback: if user has a compatible GPT plugin available, use it directly
-    // even when they forgot to switch/save the mode in settings.
-    report(46, "尝试兼容 GPT 插件");
-    const fallbackDetection = await detectAwesomeGPTAsync();
-    if (fallbackDetection.installed && fallbackDetection.callable) {
-      return await extractByCompatibleGPTPlugin(
-        item,
-        source,
-        getCompatibleGPTTimeoutSeconds(settings.timeoutSeconds),
-        settings.customPromptTemplate,
-        report,
-      );
-    }
-    throw new ReviewUserError(
-      "AI config missing",
-      "请检查AI模型配置：API Key 和模型不能为空",
-    );
-  }
-
-  try {
-    report(50, "检查 AI 配置");
-    let sourceContent = source.content;
-    if (effectiveSettings.provider === "openai") {
-      sourceContent = await enrichSourceContentWithConfiguredEmbeddings(
-        source,
-        effectiveSettings,
-        report,
-      );
-    }
-    report(
-      58,
-      effectiveSettings.provider === "gemini"
-        ? "准备 Gemini 请求"
-        : "准备 AI 请求",
-    );
-    report(
-      66,
-      effectiveSettings.provider === "gemini"
-        ? "等待 Gemini 响应"
-        : "等待 AI 响应",
-    );
-    const rawText =
-      effectiveSettings.provider === "gemini"
-        ? await callGemini(effectiveSettings, sourceContent)
-        : await callOpenAICompatible(effectiveSettings, sourceContent);
-    report(88, "解析 AI 返回内容");
-
-    const draft = normalizeDraft(item, rawText, {
-      provider:
-        effectiveSettings.apiConfigMode === "zoterogpt"
-          ? "zoterogpt-config"
-          : effectiveSettings.provider,
-      model: effectiveSettings.model,
-      source,
-    });
-    report(96, "整理提炼结果");
-    return draft;
   } catch (e: any) {
     const message = e?.message ? String(e.message) : "unknown";
     if (e instanceof ReviewUserError) throw e;
@@ -201,6 +173,16 @@ export function getDefaultReviewPromptTemplate() {
 
 export function getDefaultFolderSummaryPromptTemplate() {
   return DEFAULT_FOLDER_SUMMARY_PROMPT_TEMPLATE;
+}
+
+export function parseReviewPromptFieldKeys(customPromptTemplate = "") {
+  const template = String(customPromptTemplate || "").trim();
+  const effectiveTemplate = template || DEFAULT_REVIEW_PROMPT_TEMPLATE;
+  const explicit = parsePromptFieldKeysFromExplicitFieldLine(effectiveTemplate);
+  if (explicit.length) return explicit;
+  const fallback = parsePromptFieldKeysByPattern(effectiveTemplate);
+  if (fallback.length) return fallback;
+  return [...DEFAULT_REVIEW_PROMPT_FIELD_KEYS];
 }
 
 export async function synthesizeFolderReview(
@@ -226,18 +208,13 @@ export async function synthesizeFolderReview(
     report,
   );
   const settings = getReviewSettings();
-  const effectiveSettings = getEffectiveReviewAPISettings(settings);
-  const hasConfiguredAPI = Boolean(
-    String(effectiveSettings.secretKey || "").trim() &&
-    String(effectiveSettings.model || "").trim(),
-  );
   const prompt = buildFolderSummaryPrompt(
     normalizedFolderName,
     recordsContent,
     settings.customFolderSummaryPromptTemplate,
   );
 
-  if (settings.modelConfigMode === "awesomegpt") {
+  try {
     report(30, "检查 GPT 插件");
     const result = await summarizeByCompatibleGPTPlugin(
       normalizedFolderName,
@@ -248,58 +225,6 @@ export async function synthesizeFolderReview(
     );
     result.recordCount = validRows.length;
     return result;
-  }
-
-  if (!hasConfiguredAPI) {
-    report(30, "检查 AI 配置");
-    report(36, "尝试兼容 GPT 插件");
-    const fallbackDetection = await detectAwesomeGPTAsync();
-    if (fallbackDetection.installed && fallbackDetection.callable) {
-      const result = await summarizeByCompatibleGPTPlugin(
-        normalizedFolderName,
-        prompt,
-        recordsContent,
-        getCompatibleGPTTimeoutSeconds(settings.timeoutSeconds),
-        report,
-      );
-      result.recordCount = validRows.length;
-      return result;
-    }
-    throw new ReviewUserError(
-      "AI config missing",
-      "请检查AI模型配置：API Key 和模型不能为空",
-    );
-  }
-
-  try {
-    report(40, "检查 AI 配置");
-    report(
-      56,
-      effectiveSettings.provider === "gemini"
-        ? "准备 Gemini 综述请求"
-        : "准备综述请求",
-    );
-    report(
-      68,
-      effectiveSettings.provider === "gemini"
-        ? "等待 Gemini 综述结果"
-        : "等待综述结果",
-    );
-    const text =
-      effectiveSettings.provider === "gemini"
-        ? await callGeminiFreeform(effectiveSettings, prompt)
-        : await callOpenAICompatibleFreeform(effectiveSettings, prompt);
-    report(92, "整理综述结果");
-    return {
-      text: String(text || "").trim(),
-      provider:
-        effectiveSettings.apiConfigMode === "zoterogpt"
-          ? "zoterogpt-config"
-          : effectiveSettings.provider,
-      model: effectiveSettings.model,
-      folderName: normalizedFolderName,
-      recordCount: validRows.length,
-    };
   } catch (e: any) {
     const message = e?.message ? String(e.message) : "unknown";
     if (e instanceof ReviewUserError) throw e;
@@ -406,14 +331,14 @@ async function extractByCompatibleGPTPlugin(
   if (!detection.installed) {
     throw new ReviewUserError(
       "Awesome GPT not found",
-      "未检测到可兼容的 GPT 插件（如 Zotero GPT / Awesome GPT），请切换为本插件 API 配置",
+      "未检测到可兼容的 GPT 插件（如 Zotero GPT / Awesome GPT），请先安装并完成 Zotero GPT 配置",
     );
   }
   if (detection.installed && !detection.callable) {
     throw new ReviewUserError(
       "Awesome GPT not callable",
       detection.obstacle ||
-        "检测到 GPT 插件已安装，但未找到可调用接口，请在设置中切换为本插件 API 配置",
+        "检测到 GPT 插件已安装，但未找到可调用接口，请先初始化 Zotero GPT 界面后重试",
     );
   }
   report?.(56, "准备 GPT 插件提炼请求");
@@ -432,7 +357,7 @@ async function extractByCompatibleGPTPlugin(
   if (!awesomeResult) {
     throw new ReviewUserError(
       "Awesome GPT bridge unavailable",
-      "已检测到 GPT 插件，但当前未找到可调用接口，请在设置中切换为本插件 API 配置",
+      "已检测到 GPT 插件，但当前未找到可调用接口，请先初始化 Zotero GPT 界面后重试",
     );
   }
   report?.(88, "解析 GPT 插件返回内容");
@@ -457,14 +382,14 @@ async function summarizeByCompatibleGPTPlugin(
   if (!detection.installed) {
     throw new ReviewUserError(
       "Awesome GPT not found",
-      "未检测到可兼容的 GPT 插件（如 Zotero GPT / Awesome GPT），请切换为本插件 API 配置",
+      "未检测到可兼容的 GPT 插件（如 Zotero GPT / Awesome GPT），请先安装并完成 Zotero GPT 配置",
     );
   }
   if (!detection.callable) {
     throw new ReviewUserError(
       "Awesome GPT not callable",
       detection.obstacle ||
-        "检测到 GPT 插件已安装，但未找到可调用接口，请在设置中切换为本插件 API 配置",
+        "检测到 GPT 插件已安装，但未找到可调用接口，请先初始化 Zotero GPT 界面后重试",
     );
   }
   report?.(58, "发送合并综述请求");
@@ -477,7 +402,7 @@ async function summarizeByCompatibleGPTPlugin(
   if (!awesomeResult) {
     throw new ReviewUserError(
       "Awesome GPT bridge unavailable",
-      "已检测到 GPT 插件，但当前未找到可调用接口，请在设置中切换为本插件 API 配置",
+      "已检测到 GPT 插件，但当前未找到可调用接口，请先初始化 Zotero GPT 界面后重试",
     );
   }
   report?.(92, "整理综述结果");
@@ -488,178 +413,6 @@ async function summarizeByCompatibleGPTPlugin(
     folderName,
     recordCount: 0, // caller will overwrite if needed; kept for shape consistency
   };
-}
-
-async function callOpenAICompatibleFreeform(
-  settings: ReviewSettings,
-  prompt: string,
-) {
-  const endpoint = buildOpenAIChatEndpoint(settings.api);
-  const response = await fetchWithTimeout(
-    endpoint,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.secretKey}`,
-      },
-      body: JSON.stringify({
-        model: settings.model,
-        temperature: settings.temperature,
-        messages: [
-          {
-            role: "system",
-            content:
-              "你是一名科研助理。请根据用户提供的内容生成清晰、准确、可读的中文综述。",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      }),
-    },
-    settings.timeoutSeconds,
-  );
-
-  const data: any = await response.json();
-  if (!response.ok) {
-    throw new Error(
-      (data?.error?.message as string) || `HTTP ${response.status}`,
-    );
-  }
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("AI 返回内容为空");
-  }
-  return String(content);
-}
-
-async function callGeminiFreeform(settings: ReviewSettings, prompt: string) {
-  const endpoint = buildGeminiEndpoint(
-    settings.api,
-    settings.model,
-    settings.secretKey,
-  );
-  const response = await fetchWithTimeout(
-    endpoint,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: settings.temperature,
-        },
-      }),
-    },
-    settings.timeoutSeconds,
-  );
-
-  const data: any = await response.json();
-  if (!response.ok) {
-    const msg =
-      data?.error?.message || data?.message || `HTTP ${response.status}`;
-    throw new Error(String(msg));
-  }
-  const parts = data?.candidates?.[0]?.content?.parts;
-  const text = Array.isArray(parts)
-    ? parts.map((p: any) => p?.text || "").join("\n")
-    : "";
-  if (!text) {
-    throw new Error("Gemini 返回内容为空");
-  }
-  return String(text);
-}
-
-async function callOpenAICompatible(
-  settings: ReviewSettings,
-  sourceContent: string,
-) {
-  const endpoint = buildOpenAIChatEndpoint(settings.api);
-  const prompt = buildPrompt(sourceContent, settings.customPromptTemplate);
-  const response = await fetchWithTimeout(
-    endpoint,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.secretKey}`,
-      },
-      body: JSON.stringify({
-        model: settings.model,
-        temperature: settings.temperature,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "你是一名科研助理。你必须返回严格 JSON，不要输出 Markdown 代码块。",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      }),
-    },
-    settings.timeoutSeconds,
-  );
-
-  const data: any = await response.json();
-  if (!response.ok) {
-    throw new Error(
-      (data?.error?.message as string) || `HTTP ${response.status}`,
-    );
-  }
-
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("AI 返回内容为空");
-  }
-  return String(content);
-}
-
-async function callGemini(settings: ReviewSettings, sourceContent: string) {
-  const endpoint = buildGeminiEndpoint(
-    settings.api,
-    settings.model,
-    settings.secretKey,
-  );
-  const prompt = buildPrompt(sourceContent, settings.customPromptTemplate);
-  const response = await fetchWithTimeout(
-    endpoint,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: settings.temperature,
-          responseMimeType: "application/json",
-        },
-      }),
-    },
-    settings.timeoutSeconds,
-  );
-
-  const data: any = await response.json();
-  if (!response.ok) {
-    const msg =
-      data?.error?.message || data?.message || `HTTP ${response.status}`;
-    throw new Error(String(msg));
-  }
-
-  const parts = data?.candidates?.[0]?.content?.parts;
-  const text = Array.isArray(parts)
-    ? parts.map((p: any) => p?.text || "").join("\n")
-    : "";
-  if (!text) {
-    throw new Error("Gemini 返回内容为空");
-  }
-  return String(text);
 }
 
 async function tryCallAwesomeGPT(
@@ -771,162 +524,6 @@ async function enrichSourceContentWithPDFEmbeddings(
 
   report?.(70, "合并 PDF 语义片段");
   return appendCappedSection(source.content, section, MAX_SOURCE_CONTENT_CHARS);
-}
-
-async function enrichSourceContentWithConfiguredEmbeddings(
-  source: ReviewItemSource,
-  settings: ReviewSettings,
-  report?: ReviewProgressReporter,
-) {
-  if (!source.pdfText) {
-    return source.content;
-  }
-  if (settings.provider !== "openai") {
-    return source.content;
-  }
-  if (!settings.secretKey || !settings.embeddingModel) {
-    return source.content;
-  }
-
-  report?.(60, "分析 PDF 重点片段");
-  const embeddingContext = await tryBuildPDFEmbeddingContextViaAPI(
-    source,
-    settings,
-    report,
-  );
-  if (!embeddingContext) {
-    report?.(68, "未获得 PDF 语义片段，继续提炼");
-    return source.content;
-  }
-
-  const section = [
-    "",
-    "PDF语义检索片段（Embedding 相关段落）:",
-    embeddingContext,
-  ].join("\n");
-
-  report?.(70, "合并 PDF 语义片段");
-  return appendCappedSection(source.content, section, MAX_SOURCE_CONTENT_CHARS);
-}
-
-async function tryBuildPDFEmbeddingContextViaAPI(
-  source: ReviewItemSource,
-  settings: ReviewSettings,
-  report?: ReviewProgressReporter,
-) {
-  try {
-    const chunks = chunkTextForEmbedding(source.pdfText);
-    if (chunks.length < 2) {
-      return "";
-    }
-    report?.(62, "计算 PDF 分块向量");
-
-    const query = buildPDFEmbeddingQuery(source);
-    const embedTimeoutSeconds = Math.max(
-      20,
-      Math.min(120, Math.floor(Number(settings.timeoutSeconds) || 0)),
-    );
-
-    const docVectorsRaw = await fetchOpenAIEmbeddingsInBatches(
-      settings,
-      chunks,
-      embedTimeoutSeconds,
-    );
-    report?.(65, "计算检索查询向量");
-    const [queryVectorRaw] = await fetchOpenAIEmbeddings(
-      settings,
-      [query],
-      embedTimeoutSeconds,
-    );
-
-    const queryVector = toNumericVector(queryVectorRaw);
-    if (!queryVector.length) {
-      return "";
-    }
-
-    const ranked = chunks
-      .map((text, index) => {
-        const vector = toNumericVector(docVectorsRaw[index]);
-        if (!vector.length) return null;
-        return {
-          index,
-          text,
-          score: cosineSimilarity(queryVector, vector),
-        };
-      })
-      .filter(Boolean) as Array<{ index: number; text: string; score: number }>;
-
-    if (!ranked.length) {
-      return "";
-    }
-    report?.(67, "筛选相关 PDF 片段");
-
-    const selected = ranked
-      .sort((a, b) => b.score - a.score)
-      .slice(0, EMBEDDING_TOP_K)
-      .sort((a, b) => a.index - b.index);
-
-    return selected
-      .map((chunk, i) => `[片段${i + 1}] ${truncateText(chunk.text, 1200)}`)
-      .join("\n\n");
-  } catch (e) {
-    ztoolkit.log("Configured embedding enhancement skipped", e);
-    return "";
-  }
-}
-
-async function fetchOpenAIEmbeddingsInBatches(
-  settings: ReviewSettings,
-  inputs: string[],
-  timeoutSeconds: number,
-) {
-  const batchSize = Math.max(
-    1,
-    Math.min(100, Math.floor(Number(settings.embeddingBatchNum) || 1)),
-  );
-  const vectors: number[][] = [];
-  for (let i = 0; i < inputs.length; i += batchSize) {
-    const batch = inputs.slice(i, i + batchSize);
-    const next = await fetchOpenAIEmbeddings(settings, batch, timeoutSeconds);
-    vectors.push(...next);
-  }
-  return vectors;
-}
-
-async function fetchOpenAIEmbeddings(
-  settings: ReviewSettings,
-  inputs: string[],
-  timeoutSeconds: number,
-) {
-  if (!inputs.length) return [] as number[][];
-
-  const endpoint = buildOpenAIEmbeddingsEndpoint(settings.api);
-  const response = await fetchWithTimeout(
-    endpoint,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.secretKey}`,
-      },
-      body: JSON.stringify({
-        model: settings.embeddingModel,
-        input: inputs,
-      }),
-    },
-    Math.max(10, Math.min(settings.timeoutSeconds, timeoutSeconds)),
-  );
-
-  const data: any = await response.json();
-  if (!response.ok) {
-    const message =
-      data?.error?.message || data?.message || `HTTP ${response.status}`;
-    throw new Error(String(message));
-  }
-
-  const rows = Array.isArray(data?.data) ? [...data.data] : [];
-  rows.sort((a: any, b: any) => Number(a?.index ?? 0) - Number(b?.index ?? 0));
-  return rows.map((row: any) => toNumericVector(row?.embedding));
 }
 
 async function tryBuildPDFEmbeddingContext(
@@ -1185,6 +782,139 @@ function buildPrompt(sourceContent: string, customPromptTemplate = "") {
   return [template, "", "文献信息如下：", sourceContent].join("\n");
 }
 
+function parsePromptFieldKeysFromExplicitFieldLine(template: string) {
+  const fieldLines = String(template || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /(字段|fields?)/i.test(line));
+  if (!fieldLines.length) return [] as ReviewPromptFieldKey[];
+  const line = fieldLines[0];
+  const matched = line.match(/(?:字段|fields?)\s*[：:]\s*(.+)$/i);
+  const source = matched?.[1] || line;
+  return parsePromptFieldKeysFromTokenString(source);
+}
+
+function parsePromptFieldKeysByPattern(template: string) {
+  const text = String(template || "");
+  const candidates: Array<{ key: ReviewPromptFieldKey; index: number }> = [];
+  for (const [key, patterns] of Object.entries(
+    PROMPT_FIELD_DETECTION_PATTERNS,
+  ) as Array<[ReviewPromptFieldKey, RegExp[]]>) {
+    const indexes = patterns
+      .map((pattern) => text.search(pattern))
+      .filter((idx) => idx >= 0);
+    if (!indexes.length) continue;
+    candidates.push({
+      key,
+      index: Math.min(...indexes),
+    });
+  }
+  candidates.sort((a, b) => a.index - b.index);
+  return uniquePromptFieldKeys(candidates.map((it) => it.key));
+}
+
+function parsePromptFieldKeysFromTokenString(input: string) {
+  const raw = String(input || "");
+  const tokens = raw
+    .split(/[\s,，;；、|/]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const keys = tokens
+    .map((token) => mapPromptTokenToFieldKey(token))
+    .filter((field): field is ReviewPromptFieldKey => Boolean(field));
+  return uniquePromptFieldKeys(keys);
+}
+
+function uniquePromptFieldKeys(keys: ReviewPromptFieldKey[]) {
+  const normalized = keys.filter(Boolean);
+  if (!normalized.length) return [] as ReviewPromptFieldKey[];
+  return Array.from(new Set(normalized));
+}
+
+function mapPromptTokenToFieldKey(token: string): ReviewPromptFieldKey | null {
+  const normalized = normalizePromptToken(token);
+  if (!normalized) return null;
+  const mapped = PROMPT_FIELD_ALIAS_MAP[normalized];
+  if (mapped) return mapped;
+  if (normalized.includes("pdf") && normalized.includes("annotation")) {
+    return "pdfAnnotationNotesText";
+  }
+  if (normalized.includes("pdf") && normalized.includes("批注")) {
+    return "pdfAnnotationNotesText";
+  }
+  return null;
+}
+
+function normalizePromptToken(token: string) {
+  return String(token || "")
+    .trim()
+    .replace(/[。．,，;；:：'"`“”‘’]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[_-]/g, "")
+    .toLowerCase();
+}
+
+const PROMPT_FIELD_ALIAS_MAP: Record<string, ReviewPromptFieldKey> = {
+  title: "title",
+  标题: "title",
+  authors: "authors",
+  author: "authors",
+  作者: "authors",
+  journal: "journal",
+  期刊: "journal",
+  publicationdate: "publicationDate",
+  publicationtime: "publicationDate",
+  发表时间: "publicationDate",
+  发布时间: "publicationDate",
+  日期: "publicationDate",
+  时间: "publicationDate",
+  abstract: "abstract",
+  abstracttext: "abstract",
+  摘要: "abstract",
+  researchbackground: "researchBackground",
+  background: "researchBackground",
+  研究背景: "researchBackground",
+  literaturereview: "literatureReview",
+  review: "literatureReview",
+  文献综述: "literatureReview",
+  researchmethods: "researchMethods",
+  methods: "researchMethods",
+  研究方法: "researchMethods",
+  researchconclusions: "researchConclusions",
+  conclusions: "researchConclusions",
+  研究结论: "researchConclusions",
+  keyfindings: "keyFindings",
+  findings: "keyFindings",
+  关键发现: "keyFindings",
+  classificationtags: "classificationTags",
+  tags: "classificationTags",
+  分类标签: "classificationTags",
+  标签: "classificationTags",
+  pdfannotationnotestext: "pdfAnnotationNotesText",
+  pdfannotations: "pdfAnnotationNotesText",
+  pdf批注与笔记: "pdfAnnotationNotesText",
+  pdf批注: "pdfAnnotationNotesText",
+  批注与笔记: "pdfAnnotationNotesText",
+};
+
+const PROMPT_FIELD_DETECTION_PATTERNS: Record<ReviewPromptFieldKey, RegExp[]> = {
+  title: [/\btitle\b/i, /标题/],
+  authors: [/\bauthors?\b/i, /作者/],
+  journal: [/\bjournal\b/i, /期刊/],
+  publicationDate: [/\bpublication[_\s-]?date\b/i, /发表时间|发布时间|日期|时间/],
+  abstract: [/\babstract(?:text)?\b/i, /摘要/],
+  researchBackground: [/\bresearch[_\s-]?background\b/i, /研究背景|背景/],
+  literatureReview: [/\bliterature[_\s-]?review\b/i, /文献综述/],
+  researchMethods: [/\bresearch[_\s-]?methods?\b/i, /研究方法|方法/],
+  researchConclusions: [/\bresearch[_\s-]?conclusions?\b/i, /研究结论|结论/],
+  keyFindings: [/\bkey[_\s-]?findings?\b/i, /关键发现/],
+  classificationTags: [/\bclassification[_\s-]?tags?\b/i, /分类标签|标签/],
+  pdfAnnotationNotesText: [
+    /\bpdf[_\s-]?annotation[_\s-]?notes?(?:[_\s-]?text)?\b/i,
+    /pdf批注与笔记|pdf批注|批注与笔记/,
+  ],
+};
+
 function buildFolderSummaryPrompt(
   folderName: string,
   recordsContent: string,
@@ -1284,65 +1014,6 @@ function buildFolderSummarySourceContent(
   return content;
 }
 
-function buildOpenAIChatEndpoint(api: string) {
-  const base = (api || "https://api.openai.com").trim().replace(/\/$/, "");
-  if (base.endsWith("/v1/chat/completions")) return base;
-  if (base.endsWith("/chat/completions")) return base;
-  if (base.endsWith("/v1")) return `${base}/chat/completions`;
-  return `${base}/v1/chat/completions`;
-}
-
-function buildOpenAIEmbeddingsEndpoint(api: string) {
-  const base = (api || "https://api.openai.com").trim().replace(/\/$/, "");
-  if (base.endsWith("/v1/embeddings")) return base;
-  if (base.endsWith("/embeddings")) return base;
-  if (base.endsWith("/v1")) return `${base}/embeddings`;
-  return `${base}/v1/embeddings`;
-}
-
-function buildGeminiEndpoint(
-  apiBaseURL: string,
-  model: string,
-  apiKey: string,
-) {
-  const trimmed = (apiBaseURL || "").trim();
-  if (trimmed) {
-    if (trimmed.includes(":generateContent")) {
-      return trimmed.includes("?")
-        ? trimmed
-        : `${trimmed}?key=${encodeURIComponent(apiKey)}`;
-    }
-    const base = trimmed.replace(/\/$/, "");
-    return `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  }
-  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-}
-
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutSeconds: number,
-) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (e: any) {
-    if (e?.name === "AbortError") {
-      throw new ReviewUserError(
-        "AI request timeout",
-        `AI 请求超时（>${timeoutSeconds}秒），请重试`,
-      );
-    }
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function stripCodeFence(text: string) {
   const trimmed = String(text || "").trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -1374,19 +1045,22 @@ function coerceArray(input: unknown) {
 function humanizeAIError(message: string) {
   const msg = message.toLowerCase();
   if (
-    msg.includes("401") ||
-    msg.includes("unauthorized") ||
-    msg.includes("api key")
+    msg.includes("awesome gpt not found") ||
+    msg.includes("zotero gpt") ||
+    msg.includes("not found")
   ) {
-    return "请检查AI模型配置：API Key 无效或未授权";
+    return "未检测到可用的 Zotero GPT，请检查插件安装与配置";
   }
-  if (msg.includes("429") || msg.includes("rate")) {
-    return "AI 服务限流，请稍后重试";
+  if (msg.includes("not callable") || msg.includes("bridge unavailable")) {
+    return "已检测到 Zotero GPT，但桥接接口不可用，请先打开 Zotero GPT 页面后重试";
+  }
+  if (msg.includes("timeout")) {
+    return "请求超时，请检查网络和 Zotero GPT 状态后重试";
   }
   if (msg.includes("network") || msg.includes("fetch")) {
-    return "网络异常，请检查网络连接";
+    return "网络异常，请检查网络连接与 Zotero GPT 接口状态";
   }
-  return "提炼失败，请重试（可检查模型配置和网络）";
+  return "提炼失败，请重试（可检查 Zotero GPT 插件状态和网络）";
 }
 
 function safeField(item: Zotero.Item, field: string) {

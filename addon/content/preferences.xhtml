@@ -62,171 +62,6 @@
         </html:div>
       </html:div>
 
-      <html:div
-        style="
-          display: grid;
-          grid-template-columns: 160px 1fr;
-          gap: 8px;
-          align-items: center;
-        "
-      >
-        <html:label for="zotero-prefpane-__addonRef__-model-mode"
-          >模型配置方式</html:label
-        >
-        <html:select id="zotero-prefpane-__addonRef__-model-mode">
-          <html:option value="custom">使用本插件 API 配置</html:option>
-          <html:option value="awesomegpt">使用已安装 GPT 插件</html:option>
-        </html:select>
-      </html:div>
-
-      <html:fieldset
-        id="zotero-prefpane-__addonRef__-custom-config-fieldset"
-        style="border: 1px solid #d1d5db; border-radius: 6px; padding: 10px"
-      >
-        <html:legend>AI 接口配置（与 Zotero GPT 配置风格一致）</html:legend>
-
-        <html:div
-          id="zotero-prefpane-__addonRef__-api-config-mode-hint"
-          style="
-            margin-top: 4px;
-            font-size: 12px;
-            color: #475569;
-            line-height: 1.4;
-          "
-        >
-        </html:div>
-
-        <html:div
-          id="zotero-prefpane-__addonRef__-api-param-fields"
-          style="
-            display: grid;
-            grid-template-columns: 160px 1fr;
-            gap: 8px;
-            align-items: center;
-            margin-top: 8px;
-          "
-        >
-          <html:label for="zotero-prefpane-__addonRef__-provider"
-            >接口类型（扩展）</html:label
-          >
-          <html:select id="zotero-prefpane-__addonRef__-provider">
-            <html:option value="openai">OpenAI 兼容接口</html:option>
-            <html:option value="gemini">Google Gemini</html:option>
-          </html:select>
-
-          <html:label for="zotero-prefpane-__addonRef__-api">api</html:label>
-          <html:input
-            id="zotero-prefpane-__addonRef__-api"
-            type="text"
-            placeholder="例如 https://api.openai.com（与 Zotero GPT 一致）"
-          />
-
-          <html:label for="zotero-prefpane-__addonRef__-secret-key"
-            >secretKey</html:label
-          >
-          <html:div style="display: flex; gap: 8px; align-items: center">
-            <html:input
-              id="zotero-prefpane-__addonRef__-secret-key"
-              type="password"
-              style="flex: 1"
-              placeholder="sk-..."
-            />
-            <html:button
-              type="button"
-              id="zotero-prefpane-__addonRef__-toggle-secret-key-btn"
-            >
-              显示
-            </html:button>
-          </html:div>
-
-          <html:label for="zotero-prefpane-__addonRef__-model"
-            >model</html:label
-          >
-          <html:input
-            id="zotero-prefpane-__addonRef__-model"
-            type="text"
-            placeholder="例如 gpt-4o-mini（与 Zotero GPT 一致）"
-          />
-
-          <html:label for="zotero-prefpane-__addonRef__-temperature"
-            >temperature</html:label
-          >
-          <html:input
-            id="zotero-prefpane-__addonRef__-temperature"
-            type="number"
-            min="0"
-            max="2"
-            step="0.1"
-            placeholder="1.0"
-          />
-
-          <html:label for="zotero-prefpane-__addonRef__-embedding-model"
-            >embeddingModel</html:label
-          >
-          <html:input
-            id="zotero-prefpane-__addonRef__-embedding-model"
-            type="text"
-            placeholder="例如 text-embedding-ada-002"
-          />
-
-          <html:label for="zotero-prefpane-__addonRef__-embedding-batch-num"
-            >embeddingBatchNum</html:label
-          >
-          <html:input
-            id="zotero-prefpane-__addonRef__-embedding-batch-num"
-            type="number"
-            min="1"
-            max="100"
-            step="1"
-            placeholder="10"
-          />
-        </html:div>
-
-        <html:div
-          style="
-            display: grid;
-            grid-template-columns: 160px 1fr;
-            gap: 8px;
-            align-items: center;
-            margin-top: 8px;
-          "
-        >
-          <html:label for="zotero-prefpane-__addonRef__-timeout"
-            >请求超时（秒）</html:label
-          >
-          <html:input
-            id="zotero-prefpane-__addonRef__-timeout"
-            type="number"
-            min="600"
-            max="600"
-            step="1"
-          />
-
-          <html:label for="zotero-prefpane-__addonRef__-daily-limit"
-            >日调用上限</html:label
-          >
-          <html:input
-            id="zotero-prefpane-__addonRef__-daily-limit"
-            type="number"
-            min="1"
-            max="10000"
-            step="1"
-          />
-        </html:div>
-
-        <html:div
-          style="
-            margin-top: 8px;
-            font-size: 12px;
-            color: #475569;
-            line-height: 1.4;
-          "
-        >
-          推荐与 Zotero GPT
-          使用同一组参数：<html:code>api</html:code>、<html:code>secretKey</html:code>、<html:code>model</html:code>、<html:code>temperature</html:code>、<html:code>embeddingBatchNum</html:code>。
-        </html:div>
-      </html:fieldset>
-
       <html:fieldset
         style="border: 1px solid #d1d5db; border-radius: 6px; padding: 10px"
       >
@@ -439,6 +274,15 @@
           />
         </html:div>
       </html:fieldset>
+
+      <html:div style="display: flex; justify-content: flex-end; gap: 8px">
+        <html:button
+          type="button"
+          id="zotero-prefpane-__addonRef__-refresh-prompt-view-btn"
+        >
+          应用 Prompt 并刷新文献视图
+        </html:button>
+      </html:div>
 
       <html:div
         style="

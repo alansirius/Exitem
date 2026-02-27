@@ -1,6 +1,7 @@
-export type ReviewModelConfigMode = "custom" | "awesomegpt";
-export type ReviewProvider = "openai" | "gemini";
-export type ReviewAPIConfigMode = "zoterogpt" | "custom";
+export type ReviewModelConfigMode = "awesomegpt";
+export type ReviewProvider = "openai";
+export type ReviewAPIConfigMode = "zoterogpt";
+export type ReviewRecordType = "literature" | "folderSummary";
 
 export interface ReviewSettings {
   modelConfigMode: ReviewModelConfigMode;
@@ -13,7 +14,6 @@ export interface ReviewSettings {
   embeddingModel: string;
   embeddingBatchNum: number;
   timeoutSeconds: number;
-  dailyLimit: number;
   usePDFAsInputSource: boolean;
   usePDFAnnotationsAsContext: boolean;
   importPDFAnnotationsAsField: boolean;
@@ -46,6 +46,7 @@ export interface AwesomeGPTDetection {
 
 export interface LiteratureReviewDraft {
   zoteroItemID: number;
+  recordType?: ReviewRecordType;
   title: string;
   authors: string;
   journal: string;
@@ -58,6 +59,8 @@ export interface LiteratureReviewDraft {
   researchConclusions: string;
   keyFindings: string[];
   classificationTags: string[];
+  sourceRecordIDs?: number[];
+  sourceZoteroItemIDs?: number[];
   aiProvider: string;
   aiModel: string;
   rawAIResponse?: string;
@@ -72,16 +75,20 @@ export interface ReviewFolderRow {
 
 export interface ReviewRecordRow extends LiteratureReviewDraft {
   id: number;
+  recordType: ReviewRecordType;
   folderID: number | null;
   folderName: string | null;
   folderIDs: number[];
   folderNames: string[];
+  sourceRecordIDs: number[];
+  sourceZoteroItemIDs: number[];
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ReviewListFilters {
   folderID?: number | null;
+  recordType?: ReviewRecordType | "all";
   search?: string;
   sortKey?: "updatedAt" | "title" | "publicationDate" | "journal";
   sortDir?: "asc" | "desc";
