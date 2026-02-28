@@ -7,6 +7,10 @@ Zotero-Exitem est un plugin Zotero pour l'extraction IA de références, la gest
 
 [English](../README.md) | [简体中文](README-zhCN.md) | [Français](README-frFR.md)
 
+## Apercu
+
+![Apercu du plugin](./images/preview-icon.png)
+
 ## Prérequis
 
 - Zotero 7 ou Zotero 8
@@ -23,6 +27,93 @@ Zotero-Exitem est un plugin Zotero pour l'extraction IA de références, la gest
 2. Dans Zotero : `Outils` -> `Plugins` -> icône engrenage -> `Install Plugin From File...`
 3. Sélectionnez `zotero-exitem.xpi`.
 4. Redémarrez Zotero.
+
+## Tutoriel (pas a pas)
+
+Dans un flux de revue de littérature, vous pouvez d'abord lancer une extraction unitaire pour générer un premier résumé, lire l'article avec ce résumé, ajouter des surlignages/annotations, puis relancer l'extraction unitaire. Les passages surlignés et les notes d'annotation sont automatiquement synchronisés dans les champs d'extraction IA et réutilisés comme sources de synthèse, afin de limiter les oublis d'informations importantes du PDF.
+
+Flux complet recommande : `Configuration des préférences` -> `Extraction unitaire/lot` -> `Gestionnaire de revue` -> `Synthèse de dossier` -> `Edition et export`.
+
+### 1. Verifier la connexion GPT et la strategie d'entree
+
+- Ouvrez `Paramètres -> Zotero-Exitem`.
+- Vérifiez que le contrôle de compatibilité GPT indique un état connecté.
+- Configurez les entrées d'extraction selon votre usage : texte PDF complet, annotations/notes d'annotation et import du texte d'annotation dans un champ dédié.
+- Exitem met en avant les signaux saisis par l'utilisateur : surlignages PDF et notes d'annotation sont stockés comme entrées importantes et réutilisés pour la synthèse.
+
+![Préférences : connexion et paramètres d'entrée](./images/首先项-连接状态检查与传入参数控制界面.png)
+
+### 2. Configurer les prompts d'extraction et de synthese
+
+- Éditez les prompts personnalisés dans les préférences (extraction et synthèse de dossier).
+- Après modification des champs du prompt d'extraction, cliquez sur `Appliquer le prompt et rafraîchir la vue` pour synchroniser les colonnes de la table avec vos champs (fonction beta).
+
+![Préférences : prompts personnalisés et rafraîchissement des colonnes](./images/首选项-自定义prompt与刷新列字段功能.png)
+
+### 3. Extraction unitaire
+
+- Dans la vue principale Zotero, sélectionnez un item puis cliquez sur `AI提炼文献内容` dans le menu contextuel.
+- Le plugin exécute l'extraction via les modèles `zotero-gpt` configurés.
+
+![Entrée extraction unitaire](./images/单条文献提取操作.png)
+
+- Après extraction, une fenêtre de résultat modifiable s'ouvre avant la sauvegarde.
+- Vous pouvez sauvegarder dans un dossier existant ou en créer un nouveau.
+
+![Fenêtre de résultat d'extraction (modifiable avant sauvegarde)](./images/单条文献提取结果弹窗.png)
+
+### 4. Extraction par lot (jusqu'a 5 items par execution)
+
+- Sélectionnez plusieurs items dans Zotero puis cliquez sur `AI提炼文献内容`.
+- Il est recommandé de vérifier que les items sélectionnés possèdent des métadonnées/PDF exploitables avant lancement.
+
+![Entrée extraction par lot](./images/批量文献提取操作.png)
+
+### 5. Ouvrir le gestionnaire de revue
+
+- Cliquez sur l'icône Exitem dans la barre d'outils supérieure de Zotero pour ouvrir le gestionnaire.
+
+![Ouvrir le gestionnaire de revue](./images/打开文献综述管理页面.png)
+
+### 6. Prise en main du gestionnaire
+
+- Panneau gauche : dossiers. Centre : liste des enregistrements. Bas : aperçu du contenu.
+- La barre d'outils supérieure permet actualisation, opérations dossier/fiches, localisation d'item, consultation du brut et export.
+
+![Vue d'ensemble du gestionnaire](./images/文献综述管理界面展示.png)
+
+### 7. Basculer entre vues "Fiches litterature" et "Synthese"
+
+- Utilisez le sélecteur de vue pour passer des fiches extraites aux enregistrements de synthèse.
+
+![Basculer entre vues](./images/切换视图.png)
+
+### 8. Ajouter des fiches dans un dossier cible
+
+- Sélectionnez des fiches dans `文献记录`.
+- Sélectionnez un dossier à gauche puis cliquez sur `加入文件夹` pour un classement par lot.
+
+![Ajouter des fiches au dossier](./images/将文献记录加入到文件夹.png)
+
+### 9. Lancer la synthese de dossier
+
+- Sélectionnez un dossier puis cliquez sur `合并综述`.
+- Par défaut, le plugin synthétise toutes les fiches unitaires du dossier en un enregistrement de synthèse.
+
+![Lancer la synthèse de dossier](./images/合并综述操作.png)
+
+### 10. Voir et editer les enregistrements bruts
+
+- Sélectionnez un enregistrement puis cliquez sur `查看原始记录`.
+- Vous pouvez copier et corriger manuellement le contenu avant sauvegarde pour la réutilisation/export.
+
+![Ouvrir l'éditeur de brut](./images/查看原始记录并编辑.png)
+
+![Interface d'édition de l'enregistrement brut](./images/原始记录编辑界面.png)
+
+### 11. Exporter les resultats
+
+- Cliquez sur `导出表格` dans le gestionnaire pour exporter un CSV selon la vue et les filtres courants.
 
 ## Fonctionnalités actuelles
 
@@ -42,9 +133,6 @@ Zotero-Exitem est un plugin Zotero pour l'extraction IA de références, la gest
   - prompt d'extraction personnalisable
   - prompt de synthèse de dossier (`合并综述`) personnalisable
   - action de préférences pour appliquer le prompt et rafraîchir les colonnes
-- Garde-fous et limites :
-  - plafond de longueur par source unitaire : 100 000 caractères
-  - seuils de troncature PDF/annotations configurables
 - Interface du gestionnaire de revue :
   - entrée via bouton de barre d'outils, ouverture en onglet en priorité (fenêtre en secours)
   - double vue : `文献记录` et `合并综述`
